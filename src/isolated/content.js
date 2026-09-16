@@ -24,11 +24,22 @@
 
   let host, shadow, textEl;
 
+  // Reserves room at the bottom of the page for the bar instead of overlapping
+  // page content — the page's own bottom padding grows/shrinks to match the
+  // bar's real rendered height.
+  const reserveSpace = new ResizeObserver((entries) => {
+    const height = entries[0]?.borderBoxSize?.[0]?.blockSize ?? entries[0]?.contentRect?.height;
+    if (typeof height === 'number') {
+      document.documentElement.style.setProperty('--ccsl-bar-height', `${Math.ceil(height)}px`);
+      document.documentElement.style.paddingBottom = `${Math.ceil(height)}px`;
+    }
+  });
+
   function ensureHost() {
     if (host && host.isConnected) return;
     host = document.createElement('div');
     host.id = 'ccsl-host';
-    host.style.cssText = 'position:fixed;inset:auto 0 0 0;z-index:2147483647;pointer-events:none;';
+    host.style.cssText = 'position:fixed;inset:auto 0 0 0;z-index:2147483647;';
     shadow = host.attachShadow({ mode: 'closed' });
 
     const style = document.createElement('style');
@@ -36,13 +47,14 @@
       .bar {
         font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         color: #e5e5e5;
-        background: rgba(20, 20, 20, 0.82);
-        padding: 3px 10px;
+        background: #141414;
+        border-top: 1px solid #333;
+        padding: 4px 10px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        pointer-events: auto;
         user-select: text;
+        box-sizing: border-box;
       }
     `;
     textEl = document.createElement('div');
@@ -50,6 +62,8 @@
     shadow.append(style, textEl);
 
     (document.documentElement || document.body).appendChild(host);
+    reserveSpace.disconnect();
+    reserveSpace.observe(host);
   }
 
   function shortCwd(cwd) {
