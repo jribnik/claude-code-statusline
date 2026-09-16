@@ -1,8 +1,15 @@
 // Runs in the isolated world (has no access to the page's own JS realm, but
 // can touch the DOM and gets extension APIs). Receives field updates from
-// src/main-world/interceptor.js over postMessage and renders a small fixed
-// status bar in a closed shadow root, so nothing here can collide with or be
-// read back by the page's own styles/scripts.
+// src/main-world/interceptor.js over postMessage and renders a small status
+// bar in a closed shadow root, so nothing here can collide with or be read
+// back by the page's own styles/scripts.
+//
+// Anchoring: confirmed via manual recon that the chat composer input is
+// `[data-testid="code-prompt-input"]`, and ~6 DOM levels up its ancestor
+// chain sits a `bg-surface-*` box that is the composer's visual "chrome"
+// (the rounded input container). The bar is inserted as a normal sibling
+// right after that box, so it participates in the page's own layout flow
+// instead of overlaying it — no fixed positioning or padding hacks needed.
 
 (() => {
   const BRIDGE_TYPE = '__ccsl_field_update';
@@ -24,32 +31,32 @@
 
   let host, shadow, textEl;
 
-  // Reserves room at the bottom of the page for the bar instead of overlapping
-  // page content — the page's own bottom padding grows/shrinks to match the
-  // bar's real rendered height.
-  const reserveSpace = new ResizeObserver((entries) => {
-    const height = entries[0]?.borderBoxSize?.[0]?.blockSize ?? entries[0]?.contentRect?.height;
-    if (typeof height === 'number') {
-      document.documentElement.style.setProperty('--ccsl-bar-height', `${Math.ceil(height)}px`);
-      document.documentElement.style.paddingBottom = `${Math.ceil(height)}px`;
+  function findComposerAnchor() {
+    const input = document.querySelector('[data-testid="code-prompt-input"]');
+    if (!input) return null;
+    let node = input.parentElement;
+    for (let i = 0; i < 10 && node; i++) {
+      if (/\bbg-surface-\d/.test(node.className || '')) return node;
+      node = node.parentElement;
     }
-  });
+    return null;
+  }
 
   function ensureHost() {
-    if (host && host.isConnected) return;
+    if (host && host.isConnected) return true;
+    const anchor = findComposerAnchor();
+    if (!anchor) return false;
+
     host = document.createElement('div');
     host.id = 'ccsl-host';
-    host.style.cssText = 'position:fixed;inset:auto 0 0 0;z-index:2147483647;';
     shadow = host.attachShadow({ mode: 'closed' });
 
     const style = document.createElement('style');
     style.textContent = `
       .bar {
         font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        color: #e5e5e5;
-        background: #141414;
-        border-top: 1px solid #333;
-        padding: 4px 10px;
+        color: #999;
+        padding: 4px 2px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -61,9 +68,8 @@
     textEl.className = 'bar';
     shadow.append(style, textEl);
 
-    (document.documentElement || document.body).appendChild(host);
-    reserveSpace.disconnect();
-    reserveSpace.observe(host);
+    anchor.insertAdjacentElement('afterend', host);
+    return true;
   }
 
   function shortCwd(cwd) {
@@ -73,7 +79,7 @@
   }
 
   function render() {
-    ensureHost();
+    if (!ensureHost()) return;
     const segments = [];
 
     const modelLabel = state.model ? (MODEL_LABELS[state.model] || state.model) : null;
@@ -110,9 +116,11 @@
 
   window.addEventListener('message', onMessage);
 
-  // Re-attach the bar if the app's SPA router replaces document content.
-  new MutationObserver(() => ensureHost()).observe(document.documentElement, { childList: true });
+  // The composer (and its ancestors) can be torn down and rebuilt by the
+  // app's SPA router; re-attach whenever that happens.
+  new MutationObserver(() => {
+    if (!host || !host.isConnected) render();
+  }).observe(document.body, { childList: true, subtree: true });
 
-  ensureHost();
   render();
 })();
