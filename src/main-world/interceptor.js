@@ -20,14 +20,9 @@
   function extract(msg) {
     if (!msg || typeof msg !== 'object') return null;
 
-    // CLI-protocol "system" init message: model, cwd, permission mode, etc.
+    // CLI-protocol "system" init message.
     if (msg.type === 'system' && msg.subtype === 'init') {
-      return {
-        model: msg.model,
-        cwd: msg.cwd,
-        permissionMode: msg.permissionMode,
-        claudeCodeVersion: msg.claude_code_version,
-      };
+      return { model: msg.model };
     }
 
     // Context-window / autocompact state.
@@ -43,12 +38,6 @@
     // distinctive enough.
     if (typeof msg.estimated_tokens === 'number' && typeof msg.estimated_tokens_delta === 'number') {
       return { estimatedTokens: msg.estimated_tokens };
-    }
-
-    // Session status / subtype changes (idle, working, etc. — subtype names
-    // not yet fully enumerated; relayed as-is for the renderer to display).
-    if (msg.type === 'system' && msg.subtype && msg.subtype !== 'init' && msg.subtype !== 'commands_changed') {
-      return { sessionSubtype: msg.subtype };
     }
 
     return null;
@@ -68,6 +57,71 @@
       fields = null;
     }
     if (fields) post(fields);
+  }
+
+  // Pro/Max rate limits, confirmed via recon: /api/organizations/{id}/usage
+  // returns five_hour/seven_day objects with { utilization, resets_at }.
+  function extractFromUsage(json) {
+    if (!json || typeof json !== 'object') return null;
+    const fields = {};
+    if (json.five_hour && typeof json.five_hour.utilization === 'number') {
+      fields.fiveHourPct = json.five_hour.utilization;
+      fields.fiveHourResetsAt = json.five_hour.resets_at || null;
+    }
+    if (json.seven_day && typeof json.seven_day.utilization === 'number') {
+      fields.sevenDayPct = json.seven_day.utilization;
+      fields.sevenDayResetsAt = json.seven_day.resets_at || null;
+    }
+    return Object.keys(fields).length ? fields : null;
+  }
+
+  // Git branch — endpoint confirmed via recon (/v1/code/github/batch-branch-status)
+  // but returned an empty branch_statuses array, so the item shape is unknown.
+  // Try a few plausible key names defensively; if none match, this just never
+  // fires and the bar simply omits the branch segment.
+  function extractFromBranchStatus(json) {
+    if (!json || !Array.isArray(json.branch_statuses) || !json.branch_statuses.length) return null;
+    const item = json.branch_statuses[0];
+    if (!item || typeof item !== 'object') return null;
+    const branch = item.branch ?? item.branch_name ?? item.name ?? item.ref ?? item.head_ref ?? null;
+    return typeof branch === 'string' && branch ? { branch } : null;
+  }
+
+  function tapFetchResponse(url, response) {
+    if (!url) return;
+    try {
+      if (/\/organizations\/[^/]+\/usage(\?|$)/.test(url)) {
+        response.clone().json()
+          .then((json) => {
+            const fields = extractFromUsage(json);
+            if (fields) post(fields);
+          })
+          .catch(() => {});
+      } else if (url.includes('batch-branch-status')) {
+        response.clone().json()
+          .then((json) => {
+            const fields = extractFromBranchStatus(json);
+            if (fields) post(fields);
+          })
+          .catch(() => {});
+      }
+    } catch {
+      // never let a tap failure affect the response the page actually uses
+    }
+  }
+
+  const originalFetch = window.fetch;
+  if (originalFetch) {
+    window.fetch = async function (...args) {
+      const response = await originalFetch.apply(this, args);
+      try {
+        const url = typeof args[0] === 'string' ? args[0] : args[0]?.url;
+        tapFetchResponse(url, response);
+      } catch {
+        // swallow — the page must always get its real response back
+      }
+      return response;
+    };
   }
 
   const OriginalWebSocket = window.WebSocket;

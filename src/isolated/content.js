@@ -1,15 +1,14 @@
 // Runs in the isolated world (has no access to the page's own JS realm, but
 // can touch the DOM and gets extension APIs). Receives field updates from
-// src/main-world/interceptor.js over postMessage and renders a small status
-// bar in a closed shadow root, so nothing here can collide with or be read
-// back by the page's own styles/scripts.
+// src/main-world/interceptor.js over postMessage and renders a status bar
+// that mirrors the user's own CLI statusLine format:
+//   branch · model · ctx XX% · 5h [bar] XX% resets… · 7d XX% resets…
 //
-// Anchoring: confirmed via manual recon that the chat composer input is
-// `[data-testid="code-prompt-input"]`, and ~6 DOM levels up its ancestor
-// chain sits a `bg-surface-*` box that is the composer's visual "chrome"
-// (the rounded input container). The bar is inserted as a normal sibling
-// right after that box, so it participates in the page's own layout flow
-// instead of overlaying it — no fixed positioning or padding hacks needed.
+// Anchoring: the chat composer input is `[data-testid="code-prompt-input"]`,
+// and ~6 DOM levels up its ancestor chain sits a `bg-surface-*` box that is
+// the composer's visual "chrome" (the rounded input container). The bar is
+// inserted as a normal sibling right after that box, so it participates in
+// the page's own layout flow instead of overlaying it.
 
 (() => {
   const BRIDGE_TYPE = '__ccsl_field_update';
@@ -18,18 +17,25 @@
     'claude-opus-5': 'Opus 5',
     'claude-haiku-4-5-20251001': 'Haiku 4.5',
   };
+  const COLOR_DIM = '#888';
+  const COLOR_GREEN = '#4ade80';
+  const COLOR_YELLOW = '#facc15';
+  const COLOR_RED = '#f87171';
+  const COLOR_TEXT = '#ccc';
 
   const state = {
+    branch: null,
     model: null,
-    cwd: null,
-    permissionMode: null,
     estimatedTokens: null,
     effectiveWindow: null,
-    autocompactThreshold: null,
-    sessionSubtype: null,
+    fiveHourPct: null,
+    fiveHourResetsAt: null,
+    sevenDayPct: null,
+    sevenDayResetsAt: null,
   };
 
   let host, shadow, textEl, composerInputEl;
+  let tickTimer = null;
 
   function findComposerAnchor() {
     const input = document.querySelector('[data-testid="code-prompt-input"]');
@@ -56,7 +62,6 @@
     style.textContent = `
       .bar {
         font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        color: #999;
         margin-top: 8px;
         padding: 4px 2px;
         white-space: nowrap;
@@ -65,17 +70,18 @@
         user-select: text;
         box-sizing: border-box;
       }
+      .bar b { font-weight: 600; }
     `;
     textEl = document.createElement('div');
     textEl.className = 'bar';
     shadow.append(style, textEl);
 
     found.anchor.insertAdjacentElement('afterend', host);
+
+    if (!tickTimer) tickTimer = setInterval(render, 30000);
     return true;
   }
 
-  // Aligns the bar's left edge with the composer's own text, rather than the
-  // left edge of its rounded chrome box (which has its own inset padding).
   function alignToComposerText() {
     if (!composerInputEl || !host) return;
     const inputRect = composerInputEl.getBoundingClientRect();
@@ -84,34 +90,87 @@
     textEl.style.paddingLeft = `${offset}px`;
   }
 
-  function shortCwd(cwd) {
-    if (!cwd) return null;
-    const parts = cwd.split('/').filter(Boolean);
-    return parts.length ? parts[parts.length - 1] : cwd;
+  function colorFor(pct) {
+    if (typeof pct !== 'number') return COLOR_DIM;
+    if (pct >= 90) return COLOR_RED;
+    if (pct >= 70) return COLOR_YELLOW;
+    return COLOR_GREEN;
+  }
+
+  function progressBar(pct) {
+    if (typeof pct !== 'number') return '──────────';
+    const filled = Math.min(10, Math.max(0, Math.round(pct / 10)));
+    return '█'.repeat(filled) + '░'.repeat(10 - filled);
+  }
+
+  function resetsIn(isoString) {
+    if (!isoString) return '';
+    const diffMs = new Date(isoString).getTime() - Date.now();
+    if (Number.isNaN(diffMs)) return '';
+    if (diffMs < 0) return 'resetting';
+    const diffSec = Math.floor(diffMs / 1000);
+    if (diffSec >= 86400) {
+      const d = Math.floor(diffSec / 86400);
+      const h = Math.floor((diffSec % 86400) / 3600);
+      return `resets ${d}d ${h}h`;
+    }
+    const h = Math.floor(diffSec / 3600);
+    const m = Math.floor((diffSec % 3600) / 60);
+    return h > 0 ? `resets ${h}h ${m}m` : `resets ${m}m`;
+  }
+
+  function span(text, { color, bold } = {}) {
+    const el = document.createElement(bold ? 'b' : 'span');
+    el.textContent = text;
+    if (color) el.style.color = color;
+    return el;
+  }
+
+  function dot() {
+    return span('  ·  ', { color: COLOR_DIM });
   }
 
   function render() {
     if (!ensureHost()) return;
     alignToComposerText();
-    const segments = [];
+
+    const nodes = [];
+
+    if (state.branch) {
+      nodes.push(span(state.branch, { bold: true, color: COLOR_TEXT }));
+      nodes.push(dot());
+    }
 
     const modelLabel = state.model ? (MODEL_LABELS[state.model] || state.model) : null;
-    if (modelLabel) segments.push(modelLabel);
-
-    const cwd = shortCwd(state.cwd);
-    if (cwd) segments.push(cwd);
+    if (modelLabel) nodes.push(span(modelLabel, { bold: true, color: COLOR_TEXT }));
 
     if (typeof state.estimatedTokens === 'number' && typeof state.effectiveWindow === 'number' && state.effectiveWindow > 0) {
       const pct = Math.min(100, Math.round((state.estimatedTokens / state.effectiveWindow) * 100));
-      segments.push(`ctx ${pct}%`);
-    } else if (typeof state.estimatedTokens === 'number') {
-      segments.push(`~${state.estimatedTokens.toLocaleString()} tok`);
+      nodes.push(dot());
+      nodes.push(span(`ctx ${pct}%`, { color: COLOR_TEXT }));
     }
 
-    if (state.sessionSubtype) segments.push(state.sessionSubtype);
-    if (state.permissionMode) segments.push(`mode:${state.permissionMode}`);
+    if (typeof state.fiveHourPct === 'number') {
+      nodes.push(dot());
+      nodes.push(span('5h ', { color: COLOR_TEXT }));
+      const c = colorFor(state.fiveHourPct);
+      nodes.push(span(`${progressBar(state.fiveHourPct)} ${state.fiveHourPct}%`, { color: c }));
+      const resets = resetsIn(state.fiveHourResetsAt);
+      if (resets) nodes.push(span(` ${resets}`, { color: COLOR_DIM }));
+    }
 
-    textEl.textContent = segments.length ? segments.join('  ·  ') : '(waiting for session data…)';
+    if (typeof state.sevenDayPct === 'number') {
+      nodes.push(dot());
+      nodes.push(span('7d ', { color: COLOR_TEXT }));
+      const c = colorFor(state.sevenDayPct);
+      nodes.push(span(`${state.sevenDayPct}%`, { color: c }));
+      const resets = resetsIn(state.sevenDayResetsAt);
+      if (resets) nodes.push(span(` ${resets}`, { color: COLOR_DIM }));
+    }
+
+    if (!nodes.length) nodes.push(span('(waiting for session data…)', { color: COLOR_DIM }));
+
+    textEl.replaceChildren(...nodes);
   }
 
   function onMessage(event) {
