@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Status Line for Claude Code Web (unofficial)",
+  "version": "0.1.0",
+  "description": "Unofficial, best-effort CLI-style status bar for Claude Code on the web. Not affiliated with or endorsed by Anthropic.",
+  "minimum_chrome_version": "111",
+  "host_permissions": ["https://claude.ai/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["src/main-world/interceptor.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["src/isolated/content.js"],
+      "world": "ISOLATED",
+      "run_at": "document_start"
+    }
+  ]
+}
