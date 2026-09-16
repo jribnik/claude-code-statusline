@@ -29,14 +29,14 @@
     sessionSubtype: null,
   };
 
-  let host, shadow, textEl;
+  let host, shadow, textEl, composerInputEl;
 
   function findComposerAnchor() {
     const input = document.querySelector('[data-testid="code-prompt-input"]');
     if (!input) return null;
     let node = input.parentElement;
     for (let i = 0; i < 10 && node; i++) {
-      if (/\bbg-surface-\d/.test(node.className || '')) return node;
+      if (/\bbg-surface-\d/.test(node.className || '')) return { anchor: node, input };
       node = node.parentElement;
     }
     return null;
@@ -44,8 +44,9 @@
 
   function ensureHost() {
     if (host && host.isConnected) return true;
-    const anchor = findComposerAnchor();
-    if (!anchor) return false;
+    const found = findComposerAnchor();
+    if (!found) return false;
+    composerInputEl = found.input;
 
     host = document.createElement('div');
     host.id = 'ccsl-host';
@@ -56,6 +57,7 @@
       .bar {
         font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         color: #999;
+        margin-top: 8px;
         padding: 4px 2px;
         white-space: nowrap;
         overflow: hidden;
@@ -68,8 +70,18 @@
     textEl.className = 'bar';
     shadow.append(style, textEl);
 
-    anchor.insertAdjacentElement('afterend', host);
+    found.anchor.insertAdjacentElement('afterend', host);
     return true;
+  }
+
+  // Aligns the bar's left edge with the composer's own text, rather than the
+  // left edge of its rounded chrome box (which has its own inset padding).
+  function alignToComposerText() {
+    if (!composerInputEl || !host) return;
+    const inputRect = composerInputEl.getBoundingClientRect();
+    const hostRect = host.getBoundingClientRect();
+    const offset = Math.max(0, Math.round(inputRect.left - hostRect.left));
+    textEl.style.paddingLeft = `${offset}px`;
   }
 
   function shortCwd(cwd) {
@@ -80,6 +92,7 @@
 
   function render() {
     if (!ensureHost()) return;
+    alignToComposerText();
     const segments = [];
 
     const modelLabel = state.model ? (MODEL_LABELS[state.model] || state.model) : null;
