@@ -120,7 +120,7 @@
   // app's SPA router; re-attach whenever that happens.
   new MutationObserver(() => {
     if (!host || !host.isConnected) render();
-  }).observe(document.body, { childList: true, subtree: true });
+  }).observe(document.documentElement, { childList: true, subtree: true });
 
   render();
 })();
