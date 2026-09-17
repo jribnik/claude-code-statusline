@@ -23,14 +23,15 @@ architecture (ask in the originating conversation if you don't have it).
   and `window.fetch` — never modifying what the app itself sends or receives.
 - Recognized sources, all found via manual recon on a live session:
   - WebSocket `{type: "system", subtype: "init", model, ...}` → model name
-  - WebSocket `{type: "autocompact_state", value: {effective_window, ...}}`
-    plus `{estimated_tokens, ...}` → context-window usage %
+    (also duplicated by the endpoint below; harmless, both agree)
+  - `GET /v1/code/sessions/{session_id}` (no further path segment) — the
+    session detail call the app already makes on its own. Its
+    `response_shape.external_metadata` carries `current_branches` (git
+    branch), `context_usage.{used_tokens,max_tokens}` (exact context %), and
+    `last_served_model`. This replaced an earlier attempt to read branch from
+    `batch-branch-status`, which only ever returned an empty array.
   - `GET /api/organizations/{id}/usage` → `five_hour`/`seven_day`
     `{utilization, resets_at}` → the Pro/Max rate-limit bars
-  - `GET .../batch-branch-status` → git branch (endpoint confirmed, but the
-    response was `{branch_statuses: []}` during recon, so the populated item
-    shape is unverified — extraction is defensive and just won't fire until
-    we see a real example)
 - Matched fields are relayed via `window.postMessage` to
   `src/isolated/content.js`, which renders
   `branch · model · ctx XX% · 5h [bar] XX% resets… · 7d XX% resets…` as a
@@ -42,11 +43,10 @@ architecture (ask in the originating conversation if you don't have it).
 1. `chrome://extensions` → enable **Developer mode**.
 2. **Load unpacked** → select this repo's folder.
 3. Open claude.ai/code and start/resume a session — the bar appears under the
-   prompt box once the session's `system`/`init` message arrives.
+   prompt box once the session detail and usage calls resolve.
 
 ## Known limitations
 
-- Git branch isn't shown yet — see above.
 - No fallback if claude.ai changes its WebSocket/REST shapes; fields that stop
   matching just silently disappear from the bar rather than erroring.
 - No user configuration — the format mirrors one specific `statusline.sh`,

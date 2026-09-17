@@ -1,10 +1,11 @@
 // Runs in the page's own JS realm (manifest "world": "MAIN") so it can see the
-// page's real WebSocket traffic. Passive only: never blocks, mutates, or drops
-// a message — every listener is wrapped so a parsing bug here can't break the app.
+// page's real WebSocket and fetch traffic. Passive only: never blocks, mutates,
+// or drops anything — every listener is wrapped so a parsing bug here can't
+// break the app.
 //
 // Phase 1 scope: extract the fields confirmed present during recon (see repo
-// README) from the session WebSocket and relay them to the isolated-world
-// content script via postMessage. No DOM scraping, no options, no storage yet.
+// README) and relay them to the isolated-world content script via
+// postMessage. No DOM scraping, no options, no storage yet.
 
 (() => {
   const BRIDGE_TYPE = '__ccsl_field_update';
@@ -20,24 +21,12 @@
   function extract(msg) {
     if (!msg || typeof msg !== 'object') return null;
 
-    // CLI-protocol "system" init message.
+    // CLI-protocol "system" init message. Context-window usage and branch
+    // come from the session detail REST endpoint instead (see below) — it
+    // has the exact used/max token counts rather than this socket's rougher
+    // running estimate.
     if (msg.type === 'system' && msg.subtype === 'init') {
       return { model: msg.model };
-    }
-
-    // Context-window / autocompact state.
-    if (msg.type === 'autocompact_state' && msg.value && typeof msg.value === 'object') {
-      return {
-        effectiveWindow: msg.value.effective_window,
-        autocompactThreshold: msg.value.threshold,
-      };
-    }
-
-    // Running token estimate — matched structurally since the exact "type"
-    // enum value wasn't captured during recon; presence of both fields is
-    // distinctive enough.
-    if (typeof msg.estimated_tokens === 'number' && typeof msg.estimated_tokens_delta === 'number') {
-      return { estimatedTokens: msg.estimated_tokens };
     }
 
     return null;
@@ -75,16 +64,32 @@
     return Object.keys(fields).length ? fields : null;
   }
 
-  // Git branch — endpoint confirmed via recon (/v1/code/github/batch-branch-status)
-  // but returned an empty branch_statuses array, so the item shape is unknown.
-  // Try a few plausible key names defensively; if none match, this just never
-  // fires and the bar simply omits the branch segment.
-  function extractFromBranchStatus(json) {
-    if (!json || !Array.isArray(json.branch_statuses) || !json.branch_statuses.length) return null;
-    const item = json.branch_statuses[0];
-    if (!item || typeof item !== 'object') return null;
-    const branch = item.branch ?? item.branch_name ?? item.name ?? item.ref ?? item.head_ref ?? null;
-    return typeof branch === 'string' && branch ? { branch } : null;
+  // Session detail, confirmed via recon: GET /v1/code/sessions/{session_id}
+  // (no further path segment) returns { response_shape: { config, external_metadata, ... } }
+  // with everything needed for the status line in one place — including the
+  // git branch, which batch-branch-status (tried earlier) never populated.
+  const SESSION_DETAIL_RE = /\/v1\/code\/sessions\/(session_[^/?]+)(?:\?|$)/;
+  function extractFromSessionDetail(json) {
+    const r = json && json.response_shape;
+    if (!r || typeof r !== 'object') return null;
+    const fields = {};
+
+    const model = r.external_metadata?.last_served_model || r.config?.model;
+    if (typeof model === 'string' && model) fields.model = model;
+
+    const branches = r.external_metadata?.current_branches;
+    if (branches && typeof branches === 'object') {
+      const branch = Object.values(branches).find((b) => typeof b === 'string' && b);
+      if (branch) fields.branch = branch;
+    }
+
+    const ctx = r.external_metadata?.context_usage;
+    if (ctx && typeof ctx.used_tokens === 'number' && typeof ctx.max_tokens === 'number' && ctx.max_tokens > 0) {
+      fields.ctxUsedTokens = ctx.used_tokens;
+      fields.ctxMaxTokens = ctx.max_tokens;
+    }
+
+    return Object.keys(fields).length ? fields : null;
   }
 
   function tapFetchResponse(url, response) {
@@ -97,10 +102,10 @@
             if (fields) post(fields);
           })
           .catch(() => {});
-      } else if (url.includes('batch-branch-status')) {
+      } else if (SESSION_DETAIL_RE.test(url)) {
         response.clone().json()
           .then((json) => {
-            const fields = extractFromBranchStatus(json);
+            const fields = extractFromSessionDetail(json);
             if (fields) post(fields);
           })
           .catch(() => {});

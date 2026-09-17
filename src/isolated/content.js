@@ -26,8 +26,8 @@
   const state = {
     branch: null,
     model: null,
-    estimatedTokens: null,
-    effectiveWindow: null,
+    ctxUsedTokens: null,
+    ctxMaxTokens: null,
     fiveHourPct: null,
     fiveHourResetsAt: null,
     sevenDayPct: null,
@@ -144,8 +144,8 @@
     const modelLabel = state.model ? (MODEL_LABELS[state.model] || state.model) : null;
     if (modelLabel) nodes.push(span(modelLabel, { bold: true, color: COLOR_TEXT }));
 
-    if (typeof state.estimatedTokens === 'number' && typeof state.effectiveWindow === 'number' && state.effectiveWindow > 0) {
-      const pct = Math.min(100, Math.round((state.estimatedTokens / state.effectiveWindow) * 100));
+    if (typeof state.ctxUsedTokens === 'number' && typeof state.ctxMaxTokens === 'number' && state.ctxMaxTokens > 0) {
+      const pct = Math.min(100, Math.round((state.ctxUsedTokens / state.ctxMaxTokens) * 100));
       nodes.push(dot());
       nodes.push(span(`ctx ${pct}%`, { color: COLOR_TEXT }));
     }
