@@ -2,7 +2,8 @@
 // can touch the DOM and gets extension APIs). Receives field updates from
 // src/main-world/interceptor.js over postMessage and renders a status bar
 // that mirrors the user's own CLI statusLine format:
-//   branch · model · ctx XX% · 5h [bar] XX% resets… · 7d XX% resets…
+//   branch · ctx XX% · 5h [bar] XX% resets… · 7d XX% resets…
+// (model is omitted — claude.ai/code already shows it in its own UI)
 //
 // Anchoring: the chat composer input is `[data-testid="code-prompt-input"]`,
 // and ~6 DOM levels up its ancestor chain sits a `bg-surface-*` box that is
@@ -12,11 +13,6 @@
 
 (() => {
   const BRIDGE_TYPE = '__ccsl_field_update';
-  const MODEL_LABELS = {
-    'claude-sonnet-5': 'Sonnet 5',
-    'claude-opus-5': 'Opus 5',
-    'claude-haiku-4-5-20251001': 'Haiku 4.5',
-  };
   const COLOR_DIM = '#888';
   const COLOR_GREEN = '#4ade80';
   const COLOR_YELLOW = '#facc15';
@@ -25,7 +21,6 @@
 
   const state = {
     branch: null,
-    model: null,
     ctxUsedTokens: null,
     ctxMaxTokens: null,
     fiveHourPct: null,
@@ -138,20 +133,16 @@
 
     if (state.branch) {
       nodes.push(span(state.branch, { bold: true, color: COLOR_TEXT }));
-      nodes.push(dot());
     }
-
-    const modelLabel = state.model ? (MODEL_LABELS[state.model] || state.model) : null;
-    if (modelLabel) nodes.push(span(modelLabel, { bold: true, color: COLOR_TEXT }));
 
     if (typeof state.ctxUsedTokens === 'number' && typeof state.ctxMaxTokens === 'number' && state.ctxMaxTokens > 0) {
       const pct = Math.min(100, Math.round((state.ctxUsedTokens / state.ctxMaxTokens) * 100));
-      nodes.push(dot());
+      if (nodes.length) nodes.push(dot());
       nodes.push(span(`ctx ${pct}%`, { color: COLOR_TEXT }));
     }
 
     if (typeof state.fiveHourPct === 'number') {
-      nodes.push(dot());
+      if (nodes.length) nodes.push(dot());
       nodes.push(span('5h ', { color: COLOR_TEXT }));
       const c = colorFor(state.fiveHourPct);
       nodes.push(span(`${progressBar(state.fiveHourPct)} ${state.fiveHourPct}%`, { color: c }));
@@ -160,7 +151,7 @@
     }
 
     if (typeof state.sevenDayPct === 'number') {
-      nodes.push(dot());
+      if (nodes.length) nodes.push(dot());
       nodes.push(span('7d ', { color: COLOR_TEXT }));
       const c = colorFor(state.sevenDayPct);
       nodes.push(span(`${state.sevenDayPct}%`, { color: c }));

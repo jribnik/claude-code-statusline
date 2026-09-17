@@ -1,7 +1,6 @@
 // Runs in the page's own JS realm (manifest "world": "MAIN") so it can see the
-// page's real WebSocket and fetch traffic. Passive only: never blocks, mutates,
-// or drops anything — every listener is wrapped so a parsing bug here can't
-// break the app.
+// page's real fetch traffic. Passive only: never blocks, mutates, or drops
+// anything — every listener is wrapped so a parsing bug here can't break the app.
 //
 // Phase 1 scope: extract the fields confirmed present during recon (see repo
 // README) and relay them to the isolated-world content script via
@@ -16,36 +15,6 @@
     } catch {
       // never let a bridge failure surface to the page
     }
-  }
-
-  function extract(msg) {
-    if (!msg || typeof msg !== 'object') return null;
-
-    // CLI-protocol "system" init message. Context-window usage and branch
-    // come from the session detail REST endpoint instead (see below) — it
-    // has the exact used/max token counts rather than this socket's rougher
-    // running estimate.
-    if (msg.type === 'system' && msg.subtype === 'init') {
-      return { model: msg.model };
-    }
-
-    return null;
-  }
-
-  function tap(rawData) {
-    let parsed;
-    try {
-      parsed = JSON.parse(rawData);
-    } catch {
-      return;
-    }
-    let fields = null;
-    try {
-      fields = extract(parsed);
-    } catch {
-      fields = null;
-    }
-    if (fields) post(fields);
   }
 
   // Pro/Max rate limits, confirmed via recon: /api/organizations/{id}/usage
@@ -65,7 +34,7 @@
   }
 
   // Session detail, confirmed via recon: GET /v1/code/sessions/{session_id}
-  // (no further path segment) returns { response_shape: { config, external_metadata, ... } }
+  // (no further path segment) returns { response_shape: { external_metadata, ... } }
   // with everything needed for the status line in one place — including the
   // git branch, which batch-branch-status (tried earlier) never populated.
   const SESSION_DETAIL_RE = /\/v1\/code\/sessions\/(session_[^/?]+)(?:\?|$)/;
@@ -73,9 +42,6 @@
     const r = json && json.response_shape;
     if (!r || typeof r !== 'object') return null;
     const fields = {};
-
-    const model = r.external_metadata?.last_served_model || r.config?.model;
-    if (typeof model === 'string' && model) fields.model = model;
 
     const branches = r.external_metadata?.current_branches;
     if (branches && typeof branches === 'object') {
@@ -127,35 +93,5 @@
       }
       return response;
     };
-  }
-
-  const OriginalWebSocket = window.WebSocket;
-  function PatchedWebSocket(url, protocols) {
-    const ws = protocols !== undefined ? new OriginalWebSocket(url, protocols) : new OriginalWebSocket(url);
-    try {
-      ws.addEventListener('message', (event) => {
-        try {
-          tap(event.data);
-        } catch {
-          // swallow — this tap must never throw into the page
-        }
-      });
-    } catch {
-      // if we can't attach the listener, just leave the page's socket alone
-    }
-    return ws;
-  }
-  PatchedWebSocket.prototype = OriginalWebSocket.prototype;
-  PatchedWebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
-  PatchedWebSocket.OPEN = OriginalWebSocket.OPEN;
-  PatchedWebSocket.CLOSING = OriginalWebSocket.CLOSING;
-  PatchedWebSocket.CLOSED = OriginalWebSocket.CLOSED;
-
-  try {
-    window.WebSocket = PatchedWebSocket;
-  } catch {
-    // if the page's CSP or an existing freeze prevents this, the isolated
-    // content script simply never receives field updates and the bar shows
-    // nothing — see the "UNAVAILABLE" handling in content.js
   }
 })();
