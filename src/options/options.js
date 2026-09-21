@@ -26,6 +26,15 @@
     return s[0].toUpperCase() + s.slice(1);
   }
 
+  // <input type="color"> only accepts #rrggbb, never CSS's #rgb shorthand —
+  // expand so a valid-but-shorthand stored/typed color never gets rejected.
+  function toColorInputValue(hex) {
+    if (/^#[0-9a-fA-F]{3}$/.test(hex)) {
+      return `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
+    }
+    return hex;
+  }
+
   const els = {
     savedHint: document.getElementById('savedHint'),
     previewBar: document.getElementById('previewBar'),
@@ -262,7 +271,7 @@
         config.colors[key] = hexInput.value;
         onConfigChanged({ immediate: true });
         const normalizedColor = currentNormalized().colors[key];
-        colorInput.value = normalizedColor;
+        colorInput.value = toColorInputValue(normalizedColor);
         hexInput.value = normalizedColor;
       });
     }
@@ -287,7 +296,7 @@
     els.thresholdWarn.value = config.thresholds.warn;
     els.thresholdCrit.value = config.thresholds.crit;
     for (const key of COLOR_KEYS) {
-      els[`color_${key}`].value = config.colors[key];
+      els[`color_${key}`].value = toColorInputValue(config.colors[key]);
       els[`color_${key}_hex`].value = config.colors[key];
     }
     renderSegments();

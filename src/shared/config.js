@@ -26,7 +26,7 @@
     driftIndicator: true,
     thresholds: { warn: 70, crit: 90 },
     bar: { width: 10, filled: '█', empty: '░' },
-    colors: { text: '#ccc', dim: '#888', ok: '#4ade80', warn: '#facc15', crit: '#f87171' },
+    colors: { text: '#cccccc', dim: '#888888', ok: '#4ade80', warn: '#facc15', crit: '#f87171' },
     fields: DEFAULT_FIELDS,
   };
 
