@@ -1,10 +1,12 @@
 # claude-code-statusline
 
 Unofficial, best-effort Chrome extension that mirrors a real Claude Code CLI
-`statusLine` script on Claude Code on the web (claude.ai/code): branch,
-context usage, and Pro/Max 5h/7d rate limits, anchored right under the prompt
-box like the CLI's status line sits below the terminal input. Model is
-omitted — claude.ai/code already shows it elsewhere in its own UI.
+`statusLine` script on Claude Code on the web (claude.ai/code): branch and
+Pro/Max 5h/7d rate limits, anchored right under the prompt box like the
+CLI's status line sits below the terminal input. Model is omitted —
+claude.ai/code already shows it elsewhere in its own UI. (Context-window %
+was also mirrored originally but was dropped 2026-09-21 — see Known
+limitations.)
 **Not affiliated with or endorsed by Anthropic.** This scrapes an unofficial,
 unversioned surface (the app's own REST traffic) and can break on any
 claude.ai deploy.
@@ -31,8 +33,7 @@ nothing in the DOM to fall back to.
   - `GET /v1/code/sessions/{session_id}` (no further path segment) — the
     session detail call the app already makes on its own. Its
     `response_shape.external_metadata` carries `current_branches` (git
-    branch) and `context_usage.{used_tokens,max_tokens}` (exact context %).
-    This replaced an earlier attempt to read branch from
+    branch). This replaced an earlier attempt to read branch from
     `batch-branch-status`, which only ever returned an empty array.
   - `GET /api/organizations/{id}/usage` → `five_hour`/`seven_day`
     `{utilization, resets_at}` → the Pro/Max rate-limit bars
@@ -48,8 +49,8 @@ nothing in the DOM to fall back to.
   Toggle that indicator in Options.
 - Matched fields are relayed via `window.postMessage` to
   `src/isolated/content.js`, which renders (by default)
-  `branch · ctx XX% · 5h [bar] XX% resets… · 7d XX% resets…` as a normal
-  sibling inserted right after the composer's chrome box (found via
+  `branch · 5h [bar] XX% resets… · 7d XX% resets…` as a normal sibling
+  inserted right after the composer's chrome box (found via
   `[data-testid="code-prompt-input"]`), inside a closed shadow root.
 - Rendering itself lives in `src/shared/render.js`, driven by a config
   object (schema + defaults in `src/shared/config.js`) stored in
@@ -71,3 +72,19 @@ nothing in the DOM to fall back to.
 - Drift detection only covers the shapes the selector pack already knows
   about (see above) — it can't tell you about a field claude.ai starts
   returning that the pack has never heard of.
+- **Context-window % is unavailable.** It was mirrored in earlier versions
+  via `external_metadata.context_usage` on the session-detail endpoint; live
+  recon on 2026-09-21 (via Chrome's remote-debugging port, both idle and
+  during a real turn) confirmed that field is gone from the API entirely,
+  replaced by unrelated fields (`rate_limit_info`, `model`,
+  `container_cc_version`, `cross_session_inbound`). The only remaining trace
+  of token counts is a `35.6k tokens` indicator the page itself briefly
+  shows while a task is running — sourced from a client-side tokenizer
+  running in a pool of Web Workers, computed entirely in-browser with no
+  network trace to intercept, and with no denominator (no `%` available
+  even if tapped). Recovering it would mean reverse-engineering that
+  Worker pool's internal `postMessage` protocol — undocumented, unversioned,
+  and a meaningfully bigger and more fragile undertaking than patching a
+  REST path — so it was dropped rather than chased. Revisit if a REST
+  source ever reappears (selector-pack.js's changelog has the full
+  investigation trail).

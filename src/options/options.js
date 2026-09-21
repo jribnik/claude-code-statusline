@@ -8,16 +8,14 @@
 (() => {
   const SAMPLE_STATE = {
     branch: 'main',
-    ctxUsedTokens: 92000,
-    ctxMaxTokens: 200000,
     fiveHourPct: 78,
     fiveHourResetsAt: new Date(Date.now() + (2 * 3600 + 10 * 60) * 1000).toISOString(),
     sevenDayPct: 41,
     sevenDayResetsAt: new Date(Date.now() + (3 * 86400 + 4 * 3600) * 1000).toISOString(),
-    drift: { packVersion: 1, items: [{ endpoint: 'sample', key: 'field' }] },
+    drift: { packVersion: 2, items: [{ endpoint: 'sample', key: 'field' }] },
   };
 
-  const FIELD_LABELS = { branch: 'Branch', ctx: 'Context', fiveHour: '5h limit', sevenDay: '7d limit' };
+  const FIELD_LABELS = { branch: 'Branch', fiveHour: '5h limit', sevenDay: '7d limit' };
   const COLOR_KEYS = ['text', 'dim', 'ok', 'warn', 'crit'];
 
   let config = CCSL_CONFIG.DEFAULTS;
@@ -138,28 +136,6 @@
         })
       )
     );
-
-    if (field.id === 'ctx') {
-      controls.push(
-        labeledControl(
-          'Mode',
-          selectControl(['pct', 'tokens', 'both'], field.mode, (v) => {
-            field.mode = v;
-            onConfigChanged({ immediate: true });
-          })
-        )
-      );
-      controls.push(
-        labeledControl(
-          'Colorize',
-          checkboxControl(field.colorize, (v) => {
-            field.colorize = v;
-            onConfigChanged({ immediate: true });
-          })
-        )
-      );
-      return controls;
-    }
 
     // fiveHour / sevenDay
     controls.push(

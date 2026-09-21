@@ -22,8 +22,6 @@
 
   const state = {
     branch: null,
-    ctxUsedTokens: null,
-    ctxMaxTokens: null,
     fiveHourPct: null,
     fiveHourResetsAt: null,
     sevenDayPct: null,

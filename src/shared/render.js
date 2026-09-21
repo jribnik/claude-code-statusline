@@ -51,29 +51,9 @@
     return span(config.separator, { color: config.colors.dim });
   }
 
-  function fmtTokens(n) {
-    if (typeof n !== 'number') return '';
-    if (n >= 1e6) return `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M`;
-    if (n >= 1e3) return `${Math.round(n / 1e3)}k`;
-    return `${n}`;
-  }
-
   function buildBranchNode(field, state, config) {
     if (!state.branch) return [];
     return [span(state.branch, { bold: field.bold, color: config.colors.text })];
-  }
-
-  function buildCtxNode(field, state, config) {
-    const used = state.ctxUsedTokens;
-    const max = state.ctxMaxTokens;
-    if (typeof used !== 'number' || typeof max !== 'number' || max <= 0) return [];
-    const pct = Math.min(100, Math.round((used / max) * 100));
-    let text;
-    if (field.mode === 'tokens') text = `${field.label} ${fmtTokens(used)}/${fmtTokens(max)}`;
-    else if (field.mode === 'both') text = `${field.label} ${pct}% (${fmtTokens(used)}/${fmtTokens(max)})`;
-    else text = `${field.label} ${pct}%`;
-    const color = field.colorize ? colorFor(pct, config) : config.colors.text;
-    return [span(text, { color })];
   }
 
   function buildRateLimitNode(field, pct, resetsAt, config, now) {
@@ -100,9 +80,6 @@
       switch (field.id) {
         case 'branch':
           segmentNodes = buildBranchNode(field, state, config);
-          break;
-        case 'ctx':
-          segmentNodes = buildCtxNode(field, state, config);
           break;
         case 'fiveHour':
           segmentNodes = buildRateLimitNode(field, state.fiveHourPct, state.fiveHourResetsAt, config, now);

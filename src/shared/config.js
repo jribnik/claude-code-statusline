@@ -9,9 +9,12 @@
 (function (global) {
   const STORAGE_KEY = 'config';
 
+  // 'ctx' (context-window %) was dropped 2026-09-21: the underlying API
+  // field is gone (see selector-pack.js's changelog) and the only remaining
+  // source is an internal client-side tokenizer Worker with no stable
+  // protocol to key a schema on. Re-add if a REST source resurfaces.
   const DEFAULT_FIELDS = [
     { id: 'branch', enabled: true, bold: true },
-    { id: 'ctx', enabled: true, label: 'ctx', mode: 'pct', colorize: false },
     { id: 'fiveHour', enabled: true, label: '5h', style: 'bar', showResets: true, resetsFormat: 'relative' },
     { id: 'sevenDay', enabled: true, label: '7d', style: 'text', showResets: true, resetsFormat: 'relative' },
   ];
@@ -60,11 +63,6 @@
     switch (defaults.id) {
       case 'branch':
         out.bold = typeof raw?.bold === 'boolean' ? raw.bold : defaults.bold;
-        break;
-      case 'ctx':
-        out.label = typeof raw?.label === 'string' && raw.label ? raw.label : defaults.label;
-        out.mode = pickEnum(raw?.mode, ['pct', 'tokens', 'both'], defaults.mode);
-        out.colorize = typeof raw?.colorize === 'boolean' ? raw.colorize : defaults.colorize;
         break;
       case 'fiveHour':
       case 'sevenDay':

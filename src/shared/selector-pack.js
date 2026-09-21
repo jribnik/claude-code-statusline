@@ -8,10 +8,18 @@
 // warning), it does not drive any fallback-path logic — see README.
 //
 // PACK CHANGELOG (newest first)
+//   v2  2026-09-21  dropped sessionDetail.ctxUsedTokens/ctxMaxTokens: live
+//                   recon confirmed external_metadata.context_usage is gone
+//                   from the API entirely (replaced by unrelated fields:
+//                   rate_limit_info, model, container_cc_version,
+//                   cross_session_inbound). Context-window % now appears to
+//                   be computed client-side by a local tokenizer Worker pool
+//                   with no network trace — not recoverable via this pack.
+//                   Re-add if a REST source resurfaces.
 //   v1  2026-09-21  initial: sessionDetail + usage, as confirmed by recon
 
 (function (global) {
-  const PACK_VERSION = 1;
+  const PACK_VERSION = 2;
 
   // path grammar: dot-separated object keys; '*' (last segment only) means
   // "try every own value at this level" — first candidate passing `type`
@@ -57,22 +65,6 @@
           type: 'nonEmptyString',
           presence: 'optional',
           anchor: 'external_metadata',
-        },
-        {
-          key: 'ctxUsedTokens',
-          path: 'external_metadata.context_usage.used_tokens',
-          type: 'number',
-          presence: 'optional',
-          anchor: 'external_metadata.context_usage',
-          requires: 'ctxMaxTokens',
-        },
-        {
-          key: 'ctxMaxTokens',
-          path: 'external_metadata.context_usage.max_tokens',
-          type: 'number',
-          min: 1,
-          presence: 'optional',
-          anchor: 'external_metadata.context_usage',
         },
       ],
     },
