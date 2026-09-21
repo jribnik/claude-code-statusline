@@ -9,21 +9,25 @@ omitted — claude.ai/code already shows it elsewhere in its own UI.
 unversioned surface (the app's own REST traffic) and can break on any
 claude.ai deploy.
 
-## Status: Phase 1 skeleton + options page
+## Status: Phase 1 skeleton + options page + selector pack
 
 Proves the injection/timing/architecture works and matches the target format
-of a real `~/.claude/statusline.sh`, and lets you customize that format via
-an options page instead of it being hardcoded. Not yet built: DOM-scraping
-fallback, selector-pack resilience layer. See the full design writeup for
-the target architecture (ask in the originating conversation if you don't
-have it).
+of a real `~/.claude/statusline.sh`, lets you customize that format via an
+options page instead of it being hardcoded, and extracts REST fields via a
+declarative, patchable selector pack instead of hand-rolled parsing (see
+below). DOM-scraping fallback was investigated and dropped: live recon
+confirmed claude.ai/code never renders branch/context/usage anywhere in the
+page — the app fetches them for its own internal use only, so there's
+nothing in the DOM to fall back to.
 
 ## How it works
 
 - `src/main-world/interceptor.js` runs in the page's own JS realm
   (`"world": "MAIN"`, `document_start`) and passively wraps `window.fetch` —
   never modifying what the app itself sends or receives.
-- Recognized sources, found via manual recon on a live session:
+- Which URLs to tap and where fields live in their JSON is declarative, in
+  `src/shared/selector-pack.js` — interceptor.js is just an interpreter of
+  it. Recognized sources, found via manual recon on a live session:
   - `GET /v1/code/sessions/{session_id}` (no further path segment) — the
     session detail call the app already makes on its own. Its
     `response_shape.external_metadata` carries `current_branches` (git
@@ -32,6 +36,16 @@ have it).
     `batch-branch-status`, which only ever returned an empty array.
   - `GET /api/organizations/{id}/usage` → `five_hour`/`seven_day`
     `{utilization, resets_at}` → the Pro/Max rate-limit bars
+- **When claude.ai changes a response shape:** patch the relevant `path`
+  string in `selector-pack.js`, bump `PACK_VERSION`, and add a changelog
+  line at the top of the file — that's the whole fix, no need to touch
+  interceptor.js. The pack distinguishes a field that's genuinely absent for
+  this session (e.g. no repo connected, so no branch) from real drift (the
+  field's containing object is gone or reshaped): only the latter logs a
+  `console.warn` (pack version, field path, and the *shape* — key names
+  only, never values — actually seen) and shows a `⚠` (in the "critical"
+  color) at the end of the bar, once per distinct drift per page load.
+  Toggle that indicator in Options.
 - Matched fields are relayed via `window.postMessage` to
   `src/isolated/content.js`, which renders (by default)
   `branch · ctx XX% · 5h [bar] XX% resets… · 7d XX% resets…` as a normal
@@ -54,5 +68,6 @@ have it).
 
 ## Known limitations
 
-- No fallback if claude.ai changes its REST shapes; fields that stop matching
-  just silently disappear from the bar rather than erroring.
+- Drift detection only covers the shapes the selector pack already knows
+  about (see above) — it can't tell you about a field claude.ai starts
+  returning that the pack has never heard of.

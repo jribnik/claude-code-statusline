@@ -2,80 +2,69 @@
 // page's real fetch traffic. Passive only: never blocks, mutates, or drops
 // anything — every listener is wrapped so a parsing bug here can't break the app.
 //
-// Phase 1 scope: extract the fields confirmed present during recon (see repo
-// README) and relay them to the isolated-world content script via
-// postMessage. No DOM scraping, no options, no storage yet.
+// Field extraction (which URLs to tap, where fields live in their JSON) is
+// declarative — see src/shared/selector-pack.js, loaded just before this
+// file in manifest.json. When claude.ai changes a response shape, patch a
+// `path` string there; this file only wires taps to CCSL_PACK.extract() and
+// relays results to the isolated world via postMessage.
 
 (() => {
   const BRIDGE_TYPE = '__ccsl_field_update';
+  const DRIFT_TYPE = '__ccsl_drift';
 
-  function post(fields) {
+  const PACK = globalThis.CCSL_PACK;
+  delete globalThis.CCSL_PACK; // don't leave extension internals on the page's own window
+
+  if (!PACK) {
+    console.warn('[claude-code-statusline] selector pack failed to load; extension inactive');
+    return;
+  }
+
+  function post(type, payload) {
     try {
-      window.postMessage({ __ccsl: 1, v: 1, type: BRIDGE_TYPE, fields }, window.location.origin);
+      window.postMessage({ __ccsl: 1, v: 1, type, ...payload }, window.location.origin);
     } catch {
       // never let a bridge failure surface to the page
     }
   }
 
-  // Pro/Max rate limits, confirmed via recon: /api/organizations/{id}/usage
-  // returns five_hour/seven_day objects with { utilization, resets_at }.
-  function extractFromUsage(json) {
-    if (!json || typeof json !== 'object') return null;
-    const fields = {};
-    if (json.five_hour && typeof json.five_hour.utilization === 'number') {
-      fields.fiveHourPct = json.five_hour.utilization;
-      fields.fiveHourResetsAt = json.five_hour.resets_at || null;
-    }
-    if (json.seven_day && typeof json.seven_day.utilization === 'number') {
-      fields.sevenDayPct = json.seven_day.utilization;
-      fields.sevenDayResetsAt = json.seven_day.resets_at || null;
-    }
-    return Object.keys(fields).length ? fields : null;
-  }
+  // One console.warn (and one bridge post) per distinct drift signature per
+  // page load, so a repeatedly-polled endpoint (e.g. /usage) doesn't spam.
+  const warnedDrift = new Set();
 
-  // Session detail, confirmed via recon: GET /v1/code/sessions/{session_id}
-  // (no further path segment) returns { response_shape: { external_metadata, ... } }
-  // with everything needed for the status line in one place — including the
-  // git branch, which batch-branch-status (tried earlier) never populated.
-  const SESSION_DETAIL_RE = /\/v1\/code\/sessions\/(session_[^/?]+)(?:\?|$)/;
-  function extractFromSessionDetail(json) {
-    const r = json && json.response_shape;
-    if (!r || typeof r !== 'object') return null;
-    const fields = {};
+  function reportDrift(endpoint, items) {
+    const fresh = items.filter((item) => {
+      const sig = `${PACK.version}|${endpoint.id}|${item.key || '(root)'}|${item.sawAt}`;
+      if (warnedDrift.has(sig)) return false;
+      warnedDrift.add(sig);
+      return true;
+    });
+    if (!fresh.length) return;
 
-    const branches = r.external_metadata?.current_branches;
-    if (branches && typeof branches === 'object') {
-      const branch = Object.values(branches).find((b) => typeof b === 'string' && b);
-      if (branch) fields.branch = branch;
+    for (const item of fresh) {
+      console.warn(
+        `[claude-code-statusline] selector pack v${PACK.version} drift: ${endpoint.id}.${item.key || '(root)'} `
+          + `— expected ${item.path || item.anchor}, saw ${item.saw} at ${item.sawAt}`
+      );
     }
-
-    const ctx = r.external_metadata?.context_usage;
-    if (ctx && typeof ctx.used_tokens === 'number' && typeof ctx.max_tokens === 'number' && ctx.max_tokens > 0) {
-      fields.ctxUsedTokens = ctx.used_tokens;
-      fields.ctxMaxTokens = ctx.max_tokens;
-    }
-
-    return Object.keys(fields).length ? fields : null;
+    post(DRIFT_TYPE, {
+      packVersion: PACK.version,
+      items: fresh.map((item) => ({ endpoint: endpoint.id, key: item.key })),
+    });
   }
 
   function tapFetchResponse(url, response) {
     if (!url) return;
+    const endpoint = PACK.matchEndpoint(url);
+    if (!endpoint) return;
     try {
-      if (/\/organizations\/[^/]+\/usage(\?|$)/.test(url)) {
-        response.clone().json()
-          .then((json) => {
-            const fields = extractFromUsage(json);
-            if (fields) post(fields);
-          })
-          .catch(() => {});
-      } else if (SESSION_DETAIL_RE.test(url)) {
-        response.clone().json()
-          .then((json) => {
-            const fields = extractFromSessionDetail(json);
-            if (fields) post(fields);
-          })
-          .catch(() => {});
-      }
+      response.clone().json()
+        .then((json) => {
+          const { fields, drift } = PACK.extract(endpoint, json);
+          if (fields) post(BRIDGE_TYPE, { fields });
+          if (drift.length) reportDrift(endpoint, drift);
+        })
+        .catch(() => {});
     } catch {
       // never let a tap failure affect the response the page actually uses
     }

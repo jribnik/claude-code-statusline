@@ -39,10 +39,11 @@
     return h > 0 ? `resets ${h}h ${m}m` : `resets ${m}m`;
   }
 
-  function span(text, { color, bold } = {}) {
+  function span(text, { color, bold, title } = {}) {
     const el = document.createElement(bold ? 'b' : 'span');
     el.textContent = text;
     if (color) el.style.color = color;
+    if (title) el.title = title;
     return el;
   }
 
@@ -117,6 +118,18 @@
       nodes.push(...segmentNodes);
     }
     if (!nodes.length) nodes.push(span('(waiting for session data…)', { color: config.colors.dim }));
+
+    if (state.drift && config.driftIndicator) {
+      if (nodes.length) nodes.push(separatorNode(config));
+      const items = state.drift.items || [];
+      const summary = items.map((i) => `${i.endpoint}.${i.key || '(root)'}`).join(', ');
+      nodes.push(
+        span('⚠', {
+          color: config.colors.crit,
+          title: `selector pack v${state.drift.packVersion} drift: ${summary} — see console`,
+        })
+      );
+    }
     return nodes;
   }
 

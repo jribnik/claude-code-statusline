@@ -18,6 +18,7 @@
 
 (() => {
   const BRIDGE_TYPE = '__ccsl_field_update';
+  const DRIFT_TYPE = '__ccsl_drift';
 
   const state = {
     branch: null,
@@ -27,6 +28,7 @@
     fiveHourResetsAt: null,
     sevenDayPct: null,
     sevenDayResetsAt: null,
+    drift: null,
   };
 
   let config = CCSL_CONFIG.DEFAULTS;
@@ -102,13 +104,17 @@
     if (event.source !== window) return;
     if (event.origin !== window.location.origin) return;
     const data = event.data;
-    if (!data || data.__ccsl !== 1 || data.type !== BRIDGE_TYPE) return;
-    if (!data.fields || typeof data.fields !== 'object') return;
+    if (!data || data.__ccsl !== 1) return;
 
-    for (const [key, value] of Object.entries(data.fields)) {
-      if (key in state) state[key] = value;
+    if (data.type === BRIDGE_TYPE && data.fields && typeof data.fields === 'object') {
+      for (const [key, value] of Object.entries(data.fields)) {
+        if (key in state) state[key] = value;
+      }
+      render();
+    } else if (data.type === DRIFT_TYPE && Array.isArray(data.items)) {
+      state.drift = { packVersion: data.packVersion, items: data.items };
+      render();
     }
-    render();
   }
 
   window.addEventListener('message', onMessage);

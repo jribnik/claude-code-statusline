@@ -14,6 +14,7 @@
     fiveHourResetsAt: new Date(Date.now() + (2 * 3600 + 10 * 60) * 1000).toISOString(),
     sevenDayPct: 41,
     sevenDayResetsAt: new Date(Date.now() + (3 * 86400 + 4 * 3600) * 1000).toISOString(),
+    drift: { packVersion: 1, items: [{ endpoint: 'sample', key: 'field' }] },
   };
 
   const FIELD_LABELS = { branch: 'Branch', ctx: 'Context', fiveHour: '5h limit', sevenDay: '7d limit' };
@@ -36,6 +37,7 @@
     barWidth: document.getElementById('barWidth'),
     barFilled: document.getElementById('barFilled'),
     barEmpty: document.getElementById('barEmpty'),
+    driftIndicator: document.getElementById('driftIndicator'),
     thresholdWarn: document.getElementById('thresholdWarn'),
     thresholdCrit: document.getElementById('thresholdCrit'),
     resetBtn: document.getElementById('resetBtn'),
@@ -259,6 +261,10 @@
       config.bar.empty = els.barEmpty.value;
       onConfigChanged();
     });
+    els.driftIndicator.addEventListener('change', () => {
+      config.driftIndicator = els.driftIndicator.checked;
+      onConfigChanged({ immediate: true });
+    });
     els.thresholdWarn.addEventListener('input', () => {
       config.thresholds.warn = Number(els.thresholdWarn.value);
       onConfigChanged();
@@ -301,6 +307,7 @@
     els.barWidth.value = config.bar.width;
     els.barFilled.value = config.bar.filled;
     els.barEmpty.value = config.bar.empty;
+    els.driftIndicator.checked = config.driftIndicator;
     els.thresholdWarn.value = config.thresholds.warn;
     els.thresholdCrit.value = config.thresholds.crit;
     for (const key of COLOR_KEYS) {

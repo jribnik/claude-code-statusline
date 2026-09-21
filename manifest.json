@@ -13,7 +13,7 @@
   "content_scripts": [
     {
       "matches": ["https://claude.ai/*"],
-      "js": ["src/main-world/interceptor.js"],
+      "js": ["src/shared/selector-pack.js", "src/main-world/interceptor.js"],
       "world": "MAIN",
       "run_at": "document_start"
     },

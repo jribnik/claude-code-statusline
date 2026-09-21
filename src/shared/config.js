@@ -20,6 +20,7 @@
     version: 1,
     separator: '  ·  ',
     fontSize: 12,
+    driftIndicator: true,
     thresholds: { warn: 70, crit: 90 },
     bar: { width: 10, filled: '█', empty: '░' },
     colors: { text: '#ccc', dim: '#888', ok: '#4ade80', warn: '#facc15', crit: '#f87171' },
@@ -106,6 +107,7 @@
       version: 1,
       separator: typeof s.separator === 'string' ? s.separator : DEFAULTS.separator,
       fontSize: clampNum(s.fontSize, 9, 18, DEFAULTS.fontSize),
+      driftIndicator: typeof s.driftIndicator === 'boolean' ? s.driftIndicator : DEFAULTS.driftIndicator,
       thresholds: { warn, crit },
       bar: {
         width: Math.round(clampNum(s.bar?.width, 4, 40, DEFAULTS.bar.width)),
