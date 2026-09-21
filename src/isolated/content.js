@@ -1,9 +1,14 @@
 // Runs in the isolated world (has no access to the page's own JS realm, but
 // can touch the DOM and gets extension APIs). Receives field updates from
 // src/main-world/interceptor.js over postMessage and renders a status bar
-// that mirrors the user's own CLI statusLine format:
+// that mirrors the user's own CLI statusLine format, shaped by the user's
+// options (see src/options/); defaults reproduce:
 //   branch · ctx XX% · 5h [bar] XX% resets… · 7d XX% resets…
 // (model is omitted — claude.ai/code already shows it in its own UI)
+//
+// Rendering itself lives in src/shared/render.js (CCSL_RENDER), shared with
+// the options page's live preview so the two can never drift apart. This
+// file owns the postMessage bridge, DOM anchoring, and config storage.
 //
 // Anchoring: the chat composer input is `[data-testid="code-prompt-input"]`,
 // and ~6 DOM levels up its ancestor chain sits a `bg-surface-*` box that is
@@ -13,11 +18,6 @@
 
 (() => {
   const BRIDGE_TYPE = '__ccsl_field_update';
-  const COLOR_DIM = '#888';
-  const COLOR_GREEN = '#4ade80';
-  const COLOR_YELLOW = '#facc15';
-  const COLOR_RED = '#f87171';
-  const COLOR_TEXT = '#ccc';
 
   const state = {
     branch: null,
@@ -29,7 +29,9 @@
     sevenDayResetsAt: null,
   };
 
-  let host, shadow, textEl, composerInputEl;
+  let config = CCSL_CONFIG.DEFAULTS;
+
+  let host, shadow, styleEl, textEl, composerInputEl;
   let tickTimer = null;
 
   function findComposerAnchor() {
@@ -43,20 +45,11 @@
     return null;
   }
 
-  function ensureHost() {
-    if (host && host.isConnected) return true;
-    const found = findComposerAnchor();
-    if (!found) return false;
-    composerInputEl = found.input;
-
-    host = document.createElement('div');
-    host.id = 'ccsl-host';
-    shadow = host.attachShadow({ mode: 'closed' });
-
-    const style = document.createElement('style');
-    style.textContent = `
+  function applyStyle() {
+    if (!styleEl) return;
+    styleEl.textContent = `
       .bar {
-        font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font: ${config.fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         margin-top: 8px;
         padding: 4px 2px;
         white-space: nowrap;
@@ -67,9 +60,23 @@
       }
       .bar b { font-weight: 600; }
     `;
+  }
+
+  function ensureHost() {
+    if (host && host.isConnected) return true;
+    const found = findComposerAnchor();
+    if (!found) return false;
+    composerInputEl = found.input;
+
+    host = document.createElement('div');
+    host.id = 'ccsl-host';
+    shadow = host.attachShadow({ mode: 'closed' });
+
+    styleEl = document.createElement('style');
     textEl = document.createElement('div');
     textEl.className = 'bar';
-    shadow.append(style, textEl);
+    shadow.append(styleEl, textEl);
+    applyStyle();
 
     found.anchor.insertAdjacentElement('afterend', host);
 
@@ -85,83 +92,10 @@
     textEl.style.paddingLeft = `${offset}px`;
   }
 
-  function colorFor(pct) {
-    if (typeof pct !== 'number') return COLOR_DIM;
-    if (pct >= 90) return COLOR_RED;
-    if (pct >= 70) return COLOR_YELLOW;
-    return COLOR_GREEN;
-  }
-
-  function progressBar(pct) {
-    if (typeof pct !== 'number') return '──────────';
-    const filled = Math.min(10, Math.max(0, Math.round(pct / 10)));
-    return '█'.repeat(filled) + '░'.repeat(10 - filled);
-  }
-
-  function resetsIn(isoString) {
-    if (!isoString) return '';
-    const diffMs = new Date(isoString).getTime() - Date.now();
-    if (Number.isNaN(diffMs)) return '';
-    if (diffMs < 0) return 'resetting';
-    const diffSec = Math.floor(diffMs / 1000);
-    if (diffSec >= 86400) {
-      const d = Math.floor(diffSec / 86400);
-      const h = Math.floor((diffSec % 86400) / 3600);
-      return `resets ${d}d ${h}h`;
-    }
-    const h = Math.floor(diffSec / 3600);
-    const m = Math.floor((diffSec % 3600) / 60);
-    return h > 0 ? `resets ${h}h ${m}m` : `resets ${m}m`;
-  }
-
-  function span(text, { color, bold } = {}) {
-    const el = document.createElement(bold ? 'b' : 'span');
-    el.textContent = text;
-    if (color) el.style.color = color;
-    return el;
-  }
-
-  function dot() {
-    return span('  ·  ', { color: COLOR_DIM });
-  }
-
   function render() {
     if (!ensureHost()) return;
     alignToComposerText();
-
-    const nodes = [];
-
-    if (state.branch) {
-      nodes.push(span(state.branch, { bold: true, color: COLOR_TEXT }));
-    }
-
-    if (typeof state.ctxUsedTokens === 'number' && typeof state.ctxMaxTokens === 'number' && state.ctxMaxTokens > 0) {
-      const pct = Math.min(100, Math.round((state.ctxUsedTokens / state.ctxMaxTokens) * 100));
-      if (nodes.length) nodes.push(dot());
-      nodes.push(span(`ctx ${pct}%`, { color: COLOR_TEXT }));
-    }
-
-    if (typeof state.fiveHourPct === 'number') {
-      if (nodes.length) nodes.push(dot());
-      nodes.push(span('5h ', { color: COLOR_TEXT }));
-      const c = colorFor(state.fiveHourPct);
-      nodes.push(span(`${progressBar(state.fiveHourPct)} ${state.fiveHourPct}%`, { color: c }));
-      const resets = resetsIn(state.fiveHourResetsAt);
-      if (resets) nodes.push(span(` ${resets}`, { color: COLOR_DIM }));
-    }
-
-    if (typeof state.sevenDayPct === 'number') {
-      if (nodes.length) nodes.push(dot());
-      nodes.push(span('7d ', { color: COLOR_TEXT }));
-      const c = colorFor(state.sevenDayPct);
-      nodes.push(span(`${state.sevenDayPct}%`, { color: c }));
-      const resets = resetsIn(state.sevenDayResetsAt);
-      if (resets) nodes.push(span(` ${resets}`, { color: COLOR_DIM }));
-    }
-
-    if (!nodes.length) nodes.push(span('(waiting for session data…)', { color: COLOR_DIM }));
-
-    textEl.replaceChildren(...nodes);
+    textEl.replaceChildren(...CCSL_RENDER.buildNodes(state, config, Date.now()));
   }
 
   function onMessage(event) {
@@ -178,6 +112,19 @@
   }
 
   window.addEventListener('message', onMessage);
+
+  chrome.storage.sync.get({ [CCSL_CONFIG.STORAGE_KEY]: null }, (result) => {
+    config = CCSL_CONFIG.normalize(result[CCSL_CONFIG.STORAGE_KEY]);
+    applyStyle();
+    render();
+  });
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync' || !changes[CCSL_CONFIG.STORAGE_KEY]) return;
+    config = CCSL_CONFIG.normalize(changes[CCSL_CONFIG.STORAGE_KEY].newValue);
+    applyStyle();
+    render();
+  });
 
   // The composer (and its ancestors) can be torn down and rebuilt by the
   // app's SPA router; re-attach whenever that happens.

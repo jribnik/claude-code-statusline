@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Status Line for Claude Code Web — Options</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <header>
+    <h1>Status Line for Claude Code Web</h1>
+    <span id="savedHint" class="saved-hint" hidden>Saved</span>
+  </header>
+
+  <section id="previewSection">
+    <h2>Preview</h2>
+    <div id="previewBar" class="preview-bar"></div>
+  </section>
+
+  <section id="segmentsSection">
+    <h2>Segments</h2>
+    <p class="hint">Enable, reorder, and configure each field. Order here is left-to-right in the bar.</p>
+    <div id="segments"></div>
+  </section>
+
+  <section id="appearanceSection">
+    <h2>Appearance</h2>
+    <label>Separator
+      <input type="text" id="separator" />
+    </label>
+    <label>Font size (px)
+      <input type="number" id="fontSize" min="9" max="18" />
+    </label>
+    <label>Bar width (chars)
+      <input type="number" id="barWidth" min="4" max="40" />
+    </label>
+    <label>Filled glyph
+      <input type="text" id="barFilled" maxlength="2" />
+    </label>
+    <label>Empty glyph
+      <input type="text" id="barEmpty" maxlength="2" />
+    </label>
+  </section>
+
+  <section id="thresholdsSection">
+    <h2>Thresholds</h2>
+    <label>Warn at (%)
+      <input type="number" id="thresholdWarn" min="0" max="100" />
+    </label>
+    <label>Critical at (%)
+      <input type="number" id="thresholdCrit" min="0" max="100" />
+    </label>
+  </section>
+
+  <section id="colorsSection">
+    <h2>Colors</h2>
+    <div class="colors-grid">
+      <label>Text
+        <span class="color-pair">
+          <input type="color" id="colorText" />
+          <input type="text" id="colorTextHex" class="hex" />
+        </span>
+      </label>
+      <label>Dim
+        <span class="color-pair">
+          <input type="color" id="colorDim" />
+          <input type="text" id="colorDimHex" class="hex" />
+        </span>
+      </label>
+      <label>OK
+        <span class="color-pair">
+          <input type="color" id="colorOk" />
+          <input type="text" id="colorOkHex" class="hex" />
+        </span>
+      </label>
+      <label>Warn
+        <span class="color-pair">
+          <input type="color" id="colorWarn" />
+          <input type="text" id="colorWarnHex" class="hex" />
+        </span>
+      </label>
+      <label>Critical
+        <span class="color-pair">
+          <input type="color" id="colorCrit" />
+          <input type="text" id="colorCritHex" class="hex" />
+        </span>
+      </label>
+    </div>
+  </section>
+
+  <section id="resetSection">
+    <button id="resetBtn" type="button">Reset to defaults</button>
+  </section>
+
+  <script src="../shared/config.js"></script>
+  <script src="../shared/render.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

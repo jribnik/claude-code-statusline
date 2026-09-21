@@ -9,13 +9,14 @@ omitted — claude.ai/code already shows it elsewhere in its own UI.
 unversioned surface (the app's own REST traffic) and can break on any
 claude.ai deploy.
 
-## Status: Phase 1 skeleton
+## Status: Phase 1 skeleton + options page
 
 Proves the injection/timing/architecture works and matches the target format
-of a real `~/.claude/statusline.sh`. Not yet built: options page (the format
-is hardcoded to one particular script's output), DOM-scraping fallback,
-selector-pack resilience layer. See the full design writeup for the target
-architecture (ask in the originating conversation if you don't have it).
+of a real `~/.claude/statusline.sh`, and lets you customize that format via
+an options page instead of it being hardcoded. Not yet built: DOM-scraping
+fallback, selector-pack resilience layer. See the full design writeup for
+the target architecture (ask in the originating conversation if you don't
+have it).
 
 ## How it works
 
@@ -32,10 +33,15 @@ architecture (ask in the originating conversation if you don't have it).
   - `GET /api/organizations/{id}/usage` → `five_hour`/`seven_day`
     `{utilization, resets_at}` → the Pro/Max rate-limit bars
 - Matched fields are relayed via `window.postMessage` to
-  `src/isolated/content.js`, which renders
+  `src/isolated/content.js`, which renders (by default)
   `branch · ctx XX% · 5h [bar] XX% resets… · 7d XX% resets…` as a normal
   sibling inserted right after the composer's chrome box (found via
   `[data-testid="code-prompt-input"]`), inside a closed shadow root.
+- Rendering itself lives in `src/shared/render.js`, driven by a config
+  object (schema + defaults in `src/shared/config.js`) stored in
+  `chrome.storage.sync`. The options page (`src/options/`) edits that same
+  config with a live preview, so the options page and the real bar can never
+  drift apart.
 
 ## Install (unpacked, for development)
 
@@ -43,10 +49,10 @@ architecture (ask in the originating conversation if you don't have it).
 2. **Load unpacked** → select this repo's folder.
 3. Open claude.ai/code and start/resume a session — the bar appears under the
    prompt box once the session detail and usage calls resolve.
+4. Right-click the extension icon → **Options** to customize which fields
+   show, their order, colors, thresholds, and formatting.
 
 ## Known limitations
 
 - No fallback if claude.ai changes its REST shapes; fields that stop matching
   just silently disappear from the bar rather than erroring.
-- No user configuration — the format mirrors one specific `statusline.sh`,
-  hardcoded in `src/isolated/content.js`.

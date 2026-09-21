@@ -4,7 +4,12 @@
   "version": "0.1.0",
   "description": "Unofficial, best-effort CLI-style status bar for Claude Code on the web. Not affiliated with or endorsed by Anthropic.",
   "minimum_chrome_version": "111",
+  "permissions": ["storage"],
   "host_permissions": ["https://claude.ai/*"],
+  "options_ui": {
+    "page": "src/options/options.html",
+    "open_in_tab": true
+  },
   "content_scripts": [
     {
       "matches": ["https://claude.ai/*"],
@@ -14,7 +19,7 @@
     },
     {
       "matches": ["https://claude.ai/*"],
-      "js": ["src/isolated/content.js"],
+      "js": ["src/shared/config.js", "src/shared/render.js", "src/isolated/content.js"],
       "world": "ISOLATED",
       "run_at": "document_start"
     }
