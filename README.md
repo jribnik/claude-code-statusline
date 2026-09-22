@@ -11,16 +11,20 @@ limitations.)
 unversioned surface (the app's own REST traffic) and can break on any
 claude.ai deploy.
 
-## Status: Phase 1 skeleton + options page + selector pack
+## Status: v0.2.0 — options page, selector pack, DOM anchor resilience
 
 Proves the injection/timing/architecture works and matches the target format
 of a real `~/.claude/statusline.sh`, lets you customize that format via an
-options page instead of it being hardcoded, and extracts REST fields via a
-declarative, patchable selector pack instead of hand-rolled parsing (see
-below). DOM-scraping fallback was investigated and dropped: live recon
-confirmed claude.ai/code never renders branch/context/usage anywhere in the
-page — the app fetches them for its own internal use only, so there's
-nothing in the DOM to fall back to.
+options page instead of it being hardcoded, extracts REST fields via a
+declarative, patchable selector pack instead of hand-rolled parsing, and
+finds its own DOM insertion point via an ordered fallback chain instead of a
+single brittle selector (see below for both). Has a real icon set and
+package metadata as of v0.2.0. DOM-scraping fallback for the REST fields
+themselves was investigated and dropped: live recon confirmed claude.ai/code
+never renders branch/usage anywhere in the page — the app fetches them for
+its own internal use only, so there's nothing in the DOM to fall back to for
+*those* fields (the bar's own mounting point is a separate, unrelated DOM
+concern — see the anchor-resilience section below).
 
 ## How it works
 
@@ -74,20 +78,45 @@ nothing in the DOM to fall back to.
   config with a live preview, so the options page and the real bar can never
   drift apart.
 
-## Install (unpacked, for development)
+## Install (unpacked)
 
-1. `chrome://extensions` → enable **Developer mode**.
-2. **Load unpacked** → select this repo's folder.
-3. Open claude.ai/code and start/resume a session — the bar appears under the
+Not published anywhere, including the Chrome Web Store — see Known
+limitations for why.
+
+1. Get the code: `git clone` this repo, or download and unzip a source
+   `.zip` of it.
+2. `chrome://extensions` → enable **Developer mode**.
+3. **Load unpacked** → select the folder (the one with `manifest.json`
+   directly inside it).
+4. Open claude.ai/code and start/resume a session — the bar appears under the
    prompt box once the session detail and usage calls resolve.
-4. Right-click the extension icon → **Options** to customize which fields
-   show, their order, colors, thresholds, and formatting.
+5. Right-click the extension icon (in the extensions/puzzle-piece menu) →
+   **Options** to customize which fields show, their order, colors,
+   thresholds, and formatting.
+
+Chrome does not allow installing a packaged `.crx` from outside the Chrome
+Web Store on stable channel, even a self-signed one — Developer Mode +
+**Load unpacked** (or dragging a `.crx` onto that same Developer-Mode
+`chrome://extensions` page) is the only install path for an unpublished
+extension like this one.
 
 ## Known limitations
 
-- Drift detection only covers the shapes the selector pack already knows
-  about (see above) — it can't tell you about a field claude.ai starts
-  returning that the pack has never heard of.
+- **Not published to the Chrome Web Store, deliberately.** Anthropic's
+  Consumer Terms of Service prohibit automated/non-human access to the
+  Services and "crawl[ing], scrap[ing], or otherwise harvest[ing] data...
+  from our Services" outside what the Terms permit. This extension is a
+  softer case than a classic scraper — `interceptor.js` never sends its own
+  requests; it passively reads responses the app's *own* JS already fetched
+  during your normal manual session — but the "harvest data" language is
+  broad enough that a personal, unpublished install feels meaningfully
+  lower-risk than a public or unlisted Web Store listing (more exposure,
+  Google's own review, a durable public artifact tied to your account).
+  Reassess if that calculus changes.
+- Drift detection (both REST and DOM anchor) only covers the shapes/anchors
+  the code already knows about — it can't tell you about a field or
+  insertion point claude.ai starts returning/using that nothing here has
+  ever heard of.
 - **Context-window % is unavailable.** It was mirrored in earlier versions
   via `external_metadata.context_usage` on the session-detail endpoint; live
   recon on 2026-09-21 (via Chrome's remote-debugging port, both idle and
