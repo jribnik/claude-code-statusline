@@ -50,8 +50,24 @@ nothing in the DOM to fall back to.
 - Matched fields are relayed via `window.postMessage` to
   `src/isolated/content.js`, which renders (by default)
   `branch · 5h [bar] XX% resets… · 7d XX% resets…` as a normal sibling
-  inserted right after the composer's chrome box (found via
-  `[data-testid="code-prompt-input"]`), inside a closed shadow root.
+  inserted right after the composer's chrome box, found by walking an
+  ordered list of anchor candidates (`ANCHOR_CANDIDATES` in
+  `content.js`) — `'surface'` (the `bg-surface-*` chrome box), then
+  `'geometry'` (a class-agnostic width-based match), then `'parent'`
+  (the input's direct parent, which always succeeds if the input exists
+  at all). Unlike the REST selector pack, this DOM anchor gets a real
+  fallback chain rather than a single selector: a miss here costs the
+  *whole bar*, not one segment, so degrading gracefully is worth the
+  extra candidates. Falling back past `'surface'` logs a `console.warn`
+  (`anchor pack v{N} degraded: …`, with a class/tag chain — never text
+  content) and shows the same `⚠` indicator as REST drift; the composer
+  input going missing entirely is console-only (no DOM to attach a `⚠`
+  to), and only warns after 8 consecutive misses over at least 10s, to
+  avoid false alarms during normal page load or a modal covering the
+  composer. **If you see that warning:** the chain dump names the exact
+  ancestor levels the code walked — patch `ANCHOR_CANDIDATES[0]`
+  (`'surface'`) to match the new markup, bump `ANCHOR_PACK_VERSION`, and
+  add a changelog line at the top of `content.js`.
 - Rendering itself lives in `src/shared/render.js`, driven by a config
   object (schema + defaults in `src/shared/config.js`) stored in
   `chrome.storage.sync`. The options page (`src/options/`) edits that same
