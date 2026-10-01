@@ -56,14 +56,20 @@
     return [span(state.branch, { bold: field.bold, color: config.colors.text })];
   }
 
+  // The API reports utilization as a number that may carry decimals; show a
+  // whole percent like the CLI does.
+  function formatPct(pct) {
+    return `${Math.round(pct)}%`;
+  }
+
   function buildRateLimitNode(field, pct, resetsAt, config, now) {
-    if (typeof pct !== 'number') return [];
+    if (typeof pct !== 'number' || Number.isNaN(pct)) return [];
     const nodes = [span(`${field.label} `, { color: config.colors.text })];
     const color = colorFor(pct, config);
     if (field.style === 'bar') {
-      nodes.push(span(`${progressBar(pct, config)} ${pct}%`, { color }));
+      nodes.push(span(`${progressBar(pct, config)} ${formatPct(pct)}`, { color }));
     } else {
-      nodes.push(span(`${pct}%`, { color }));
+      nodes.push(span(formatPct(pct), { color }));
     }
     if (field.showResets) {
       const resets = resetsIn(resetsAt, field.resetsFormat, now);
@@ -110,5 +116,5 @@
     return nodes;
   }
 
-  global.CCSL_RENDER = { buildNodes, colorFor, progressBar, resetsIn, span };
+  global.CCSL_RENDER = { buildNodes, colorFor, progressBar, resetsIn, span, formatPct };
 })(globalThis);

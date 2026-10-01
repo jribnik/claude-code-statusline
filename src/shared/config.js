@@ -50,9 +50,16 @@
     return isHexColor(value) ? value : fallback;
   }
 
+  // First user-perceived character, not first UTF-16 unit: value[0] split an
+  // emoji (surrogate pair) into a lone surrogate that renders as U+FFFD.
   function pickGlyph(value, fallback) {
     if (typeof value !== 'string' || !value.length) return fallback;
-    return value[0];
+    return Array.from(value)[0];
+  }
+
+  // A fresh deep copy, so callers that mutate their config can't alter DEFAULTS.
+  function defaults() {
+    return JSON.parse(JSON.stringify(DEFAULTS));
   }
 
   function normalizeField(raw, defaults) {
@@ -123,5 +130,6 @@
     };
   }
 
-  global.CCSL_CONFIG = { DEFAULTS, normalize, STORAGE_KEY, KNOWN_FIELD_IDS };
+  Object.freeze(DEFAULTS);
+  global.CCSL_CONFIG = { DEFAULTS, defaults, normalize, STORAGE_KEY, KNOWN_FIELD_IDS };
 })(globalThis);
