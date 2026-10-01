@@ -26,7 +26,7 @@
     },
     {
       "matches": ["https://claude.ai/*"],
-      "js": ["src/shared/config.js", "src/shared/render.js", "src/isolated/content.js"],
+      "js": ["src/shared/config.js", "src/shared/render.js", "src/shared/session.js", "src/isolated/content.js"],
       "world": "ISOLATED",
       "run_at": "document_start"
     }

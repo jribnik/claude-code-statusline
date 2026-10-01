@@ -58,6 +58,10 @@
 
   let config = CCSL_CONFIG.DEFAULTS;
 
+  // Branch per session id (see src/shared/session.js). Responses are stored under their own
+  // session id whenever they arrive, and render() shows the entry for the session in the URL.
+  const branches = CCSL_SESSION.createBranchStore();
+
   let host, shadow, styleEl, textEl, composerInputEl;
   let tickTimer = null;
   let lastPath = location.pathname;
@@ -173,13 +177,24 @@
     `;
   }
 
-  // Session-scoped fields belong to the session in the URL. On SPA navigation
-  // clear them so the previous session's branch can't linger on the next one.
+  // SPA navigation: reset the anchor-miss streak. The branch needs no clearing here: render()
+  // looks it up by the session id in the URL, so it can neither linger from the previous
+  // session nor be lost when the app fetched the new session before the URL changed.
   function syncPath() {
     if (location.pathname === lastPath) return;
     lastPath = location.pathname;
     missStreak = 0;
-    state.branch = null;
+  }
+
+  // Leaving /code: take the bar out of the DOM (and stop its timer) instead of leaving a stale
+  // one attached to a composer that may still be mounted briefly.
+  function removeHost() {
+    if (tickTimer) {
+      clearInterval(tickTimer);
+      tickTimer = null;
+    }
+    if (host) host.remove();
+    host = shadow = styleEl = textEl = composerInputEl = null;
   }
 
   function ensureHost() {
@@ -232,7 +247,12 @@
 
   function render() {
     syncPath();
+    if (!onCodePage()) {
+      removeHost();
+      return;
+    }
     if (!ensureHost()) return;
+    state.branch = branches.get(CCSL_SESSION.sessionIdFromPath(location.pathname));
     alignToComposerText();
     textEl.replaceChildren(...CCSL_RENDER.buildNodes(state, config, Date.now()));
   }
@@ -245,11 +265,17 @@
 
     if (data.type === BRIDGE_TYPE && data.fields && typeof data.fields === 'object') {
       syncPath();
-      // A session-detail response for some other session (prefetch, sidebar)
-      // must not overwrite the open session's branch.
-      if (data.sessionId && !location.pathname.includes(data.sessionId)) return;
       for (const [key, value] of Object.entries(data.fields)) {
-        if (BRIDGE_FIELD_KEYS.has(key)) state[key] = value;
+        if (!BRIDGE_FIELD_KEYS.has(key)) continue;
+        if (key === 'branch') {
+          // Keyed by the response's own session id, never by the current URL: a detail fetch
+          // for another session (prefetch, sidebar) or one that lands just before the app
+          // pushes the new URL is kept for that session instead of being dropped or applied
+          // to the wrong one. Only fall back to the open session if no id came along.
+          branches.set(data.sessionId || CCSL_SESSION.sessionIdFromPath(location.pathname), value);
+        } else {
+          state[key] = value;
+        }
       }
       render();
     } else if (data.type === DRIFT_TYPE && Array.isArray(data.items)) {
@@ -280,6 +306,8 @@
   // The composer (and its ancestors) can be torn down and rebuilt by the
   // app's SPA router; re-attach whenever that happens.
   new MutationObserver(() => {
+    // Navigation (including leaving /code) re-renders; otherwise only a lost host does.
+    if (location.pathname !== lastPath) return render();
     if (!onCodePage()) return;
     if (!host || !host.isConnected) render();
   }).observe(document.documentElement, { childList: true, subtree: true });

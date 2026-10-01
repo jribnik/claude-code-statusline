@@ -11,7 +11,7 @@
 //   v3  2026-10-01  sessionDetail.branch: emitNull when legitimately absent, so
 //                   moving to a session with no branch clears the old one;
 //                   endpoint match exposes the session id so content.js can
-//                   ignore detail fetches for sessions other than the open one.
+//                   store the branch under the session it belongs to.
 //   v2  2026-09-21  dropped sessionDetail.ctxUsedTokens/ctxMaxTokens: live
 //                   recon confirmed external_metadata.context_usage is gone
 //                   from the API entirely (replaced by unrelated fields:

@@ -8,7 +8,8 @@ const require = createRequire(import.meta.url);
 require('../src/shared/selector-pack.js');
 require('../src/shared/config.js');
 require('../src/shared/render.js');
-const { CCSL_PACK: PACK, CCSL_CONFIG: CONFIG, CCSL_RENDER: RENDER } = globalThis;
+require('../src/shared/session.js');
+const { CCSL_PACK: PACK, CCSL_CONFIG: CONFIG, CCSL_RENDER: RENDER, CCSL_SESSION: SESSION } = globalThis;
 
 const usageUrl = 'https://claude.ai/api/organizations/org-123/usage';
 const sessionUrl = 'https://claude.ai/v1/code/sessions/session_abc123?x=1';
@@ -87,4 +88,32 @@ test('render helpers', () => {
   assert.equal(RENDER.resetsIn('2026-09-30T00:00:00Z', 'relative', now), 'resetting');
   assert.equal(RENDER.resetsIn('garbage', 'relative', now), '');
   assert.equal(RENDER.resetsIn(null, 'relative', now), '');
+});
+
+test('sessionIdFromPath compares whole path segments', () => {
+  assert.equal(SESSION.sessionIdFromPath('/code/session_abc'), 'session_abc');
+  assert.equal(SESSION.sessionIdFromPath('/code/session_abc/'), 'session_abc');
+  assert.equal(SESSION.sessionIdFromPath('/code/session_abc/diff'), 'session_abc');
+  assert.equal(SESSION.sessionIdFromPath('/code'), null);
+  assert.equal(SESSION.sessionIdFromPath('/chat/session_abc'), null);
+  assert.equal(SESSION.sessionIdFromPath('/codex/session_abc'), null);
+  assert.notEqual(SESSION.sessionIdFromPath('/code/session_abc'), 'session_ab');
+});
+
+test('branch store: per-session, survives navigating back, null is a real value, bounded', () => {
+  const store = SESSION.createBranchStore(2);
+  store.set('session_a', 'main');
+  store.set('session_b', null); // legitimately no branch: must not show session_a's
+  assert.equal(store.get('session_a'), 'main');
+  assert.equal(store.get('session_b'), null);
+  assert.equal(store.get('session_unknown'), null);
+  store.set('session_c', 'dev'); // evicts the oldest (session_a)
+  assert.equal(store.get('session_a'), null);
+  assert.equal(store.get('session_c'), 'dev');
+});
+
+test('DEFAULTS is deeply frozen', () => {
+  assert.ok(Object.isFrozen(CONFIG.DEFAULTS.colors));
+  assert.ok(Object.isFrozen(CONFIG.DEFAULTS.fields));
+  assert.ok(Object.isFrozen(CONFIG.DEFAULTS.fields[0]));
 });

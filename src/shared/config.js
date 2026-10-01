@@ -130,6 +130,11 @@
     };
   }
 
-  Object.freeze(DEFAULTS);
+  // Deep freeze: Object.freeze alone is shallow, and nested objects/arrays (fields, colors, ...)
+  // would stay mutable. Callers that need to mutate use defaults(), a fresh copy.
+  (function deepFreeze(o) {
+    Object.values(o).forEach((v) => { if (v && typeof v === 'object') deepFreeze(v); });
+    Object.freeze(o);
+  })(DEFAULTS);
   global.CCSL_CONFIG = { DEFAULTS, defaults, normalize, STORAGE_KEY, KNOWN_FIELD_IDS };
 })(globalThis);

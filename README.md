@@ -78,6 +78,8 @@ concern — see the anchor-resilience section below).
   injected on all of claude.ai (the app navigates between areas without a
   reload), but outside `/code` they stay idle — no DOM probing, no anchor
   warnings.
+- The branch is stored per session id (`src/shared/session.js`) and the bar shows the entry
+  for the session in the URL; the bar is removed when you leave `/code`.
 - Rendering itself lives in `src/shared/render.js`, driven by a config
   object (schema + defaults in `src/shared/config.js`) stored in
   `chrome.storage.sync`. The options page (`src/options/`) edits that same
