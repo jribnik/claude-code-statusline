@@ -112,6 +112,17 @@ test('branch store: per-session, survives navigating back, null is a real value,
   assert.equal(store.get('session_c'), 'dev');
 });
 
+test('branch store: get() refreshes recency so the open session survives prefetches', () => {
+  const store = SESSION.createBranchStore(3);
+  store.set('open', 'main');
+  for (const id of ['p1', 'p2', 'p3', 'p4', 'p5']) {
+    assert.equal(store.get('open'), 'main'); // the bar re-reads the open session
+    store.set(id, 'x');
+  }
+  assert.equal(store.get('open'), 'main');
+  assert.equal(store.get('p1'), null); // least recently used went instead
+});
+
 test('DEFAULTS is deeply frozen', () => {
   assert.ok(Object.isFrozen(CONFIG.DEFAULTS.colors));
   assert.ok(Object.isFrozen(CONFIG.DEFAULTS.fields));

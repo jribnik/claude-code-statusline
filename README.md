@@ -38,9 +38,11 @@ concern — see the anchor-resilience section below).
     session detail call the app already makes on its own. Its
     `response_shape.external_metadata` carries `current_branches` (git
     branch). This replaced an earlier attempt to read branch from
-    `batch-branch-status`, which only ever returned an empty array. Only a
-    response for the session open in the current URL updates the bar, and
-    the branch is cleared on navigation and when the open session has none.
+    `batch-branch-status`, which only ever returned an empty array. Every
+    response is stored under its own session id (`src/shared/session.js`,
+    bounded LRU), and the bar shows the entry for the session in the
+    current URL. Navigating back to a session shows its remembered branch;
+    a session with no branch shows none.
   - `GET /api/organizations/{id}/usage` → `five_hour`/`seven_day`
     `{utilization, resets_at}` → the Pro/Max rate-limit bars
 - **When claude.ai changes a response shape:** patch the relevant `path`
@@ -88,7 +90,8 @@ concern — see the anchor-resilience section below).
 
 ## Tests
 
-The pure parts (selector pack, config normalization, render helpers) have
+The pure parts (selector pack, config normalization, render helpers, the
+per-session branch store) have
 dependency-free tests: `node --test tests/` (Node 20+).
 
 ## Install (unpacked)

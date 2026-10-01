@@ -12,7 +12,8 @@
   // Branch per session id. The app can fetch a session's detail before the URL changes (or
   // prefetch sessions we are not on), so every response is stored under its own session id and
   // the bar renders whichever entry belongs to the session in the URL now. Bounded so a long
-  // browsing session can't grow it without limit.
+  // browsing session can't grow it without limit. LRU: get() refreshes recency too, so the
+  // session being viewed (read on every render) isn't evicted by a burst of prefetches.
   function createBranchStore(max = 100) {
     const map = new Map();
     return {
@@ -23,7 +24,11 @@
         if (map.size > max) map.delete(map.keys().next().value);
       },
       get(sessionId) {
-        return sessionId && map.has(sessionId) ? map.get(sessionId) : null;
+        if (!sessionId || !map.has(sessionId)) return null;
+        const branch = map.get(sessionId);
+        map.delete(sessionId); // re-insert to mark most recent
+        map.set(sessionId, branch);
+        return branch;
       },
     };
   }
