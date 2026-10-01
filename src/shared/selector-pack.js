@@ -8,6 +8,10 @@
 // warning), it does not drive any fallback-path logic — see README.
 //
 // PACK CHANGELOG (newest first)
+//   v3  2026-10-01  sessionDetail.branch: emitNull when legitimately absent, so
+//                   moving to a session with no branch clears the old one;
+//                   endpoint match exposes the session id so content.js can
+//                   ignore detail fetches for sessions other than the open one.
 //   v2  2026-09-21  dropped sessionDetail.ctxUsedTokens/ctxMaxTokens: live
 //                   recon confirmed external_metadata.context_usage is gone
 //                   from the API entirely (replaced by unrelated fields:
@@ -19,13 +23,16 @@
 //   v1  2026-09-21  initial: sessionDetail + usage, as confirmed by recon
 
 (function (global) {
-  const PACK_VERSION = 2;
+  const PACK_VERSION = 3;
 
   // path grammar: dot-separated object keys; '*' (last segment only) means
   // "try every own value at this level" — first candidate passing `type`
   // wins. `anchor` is the object that must exist for a miss to be silent
   // ("legitimately absent for this session") rather than drift; it defaults
-  // to `path` minus its last segment.
+  // to `path` minus its last segment. `emitNullWhenAbsent` emits an explicit
+  // null for such a legitimate miss, so a stale value from a previous
+  // response is cleared instead of lingering. An endpoint's `match` regex may
+  // capture a session id in group 1; extract() returns it as `sessionId`.
   const ENDPOINTS = [
     {
       id: 'usage',
@@ -65,6 +72,7 @@
           type: 'nonEmptyString',
           presence: 'optional',
           anchor: 'external_metadata',
+          emitNullWhenAbsent: true,
         },
       ],
     },
@@ -134,6 +142,11 @@
     return ENDPOINTS.find((ep) => ep.match.test(url)) || null;
   }
 
+  function sessionIdFor(endpoint, url) {
+    const m = url && endpoint.match.exec(url);
+    return (m && m[1]) || null;
+  }
+
   function extract(endpoint, json) {
     let base = json;
     if (endpoint.root) {
@@ -165,6 +178,9 @@
       const anchorPath = field.anchor || defaultAnchor(field.path);
       const anchorValue = resolveAnchor(base, anchorPath);
       const anchorOk = VALIDATORS.object(anchorValue);
+      if (anchorOk && field.presence !== 'required' && field.emitNullWhenAbsent) {
+        fields[field.key] = null;
+      }
       if (!anchorOk || field.presence === 'required') {
         drift.push({
           scope: 'field',
@@ -191,5 +207,5 @@
     return { fields: Object.keys(fields).length ? fields : null, drift };
   }
 
-  global.CCSL_PACK = { version: PACK_VERSION, matchEndpoint, extract };
+  global.CCSL_PACK = { version: PACK_VERSION, matchEndpoint, extract, sessionIdFor };
 })(globalThis);
