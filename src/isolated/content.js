@@ -29,6 +29,22 @@
   const DRIFT_TYPE = '__ccsl_drift';
   const ANCHOR_PACK_VERSION = 1;
 
+  // Keys the main-world bridge may set. Drift state is owned by this file and
+  // must not be writable by a page message (a malformed one could crash render).
+  const BRIDGE_FIELD_KEYS = new Set([
+    'branch', 'fiveHourPct', 'fiveHourResetsAt', 'sevenDayPct', 'sevenDayResetsAt',
+  ]);
+
+  // The bar only belongs on Claude Code pages. The content script is injected on
+  // all of claude.ai (SPA navigation can move between /code and other areas
+  // without a reload), so every entry point checks this first: on regular chat
+  // pages the composer anchor legitimately never exists, and probing for it on
+  // every DOM mutation cost a querySelector per streamed token and raised a
+  // false "anchor missing" warning after 10s.
+  function onCodePage() {
+    return location.pathname === '/code' || location.pathname.startsWith('/code/');
+  }
+
   const state = {
     branch: null,
     fiveHourPct: null,
@@ -157,13 +173,18 @@
     `;
   }
 
-  function ensureHost() {
-    if (host && host.isConnected) return true;
+  // Session-scoped fields belong to the session in the URL. On SPA navigation
+  // clear them so the previous session's branch can't linger on the next one.
+  function syncPath() {
+    if (location.pathname === lastPath) return;
+    lastPath = location.pathname;
+    missStreak = 0;
+    state.branch = null;
+  }
 
-    if (location.pathname !== lastPath) {
-      lastPath = location.pathname;
-      missStreak = 0;
-    }
+  function ensureHost() {
+    if (!onCodePage()) return false;
+    if (host && host.isConnected) return true;
 
     const found = findComposerAnchor();
     if (!found) {
@@ -210,6 +231,7 @@
   }
 
   function render() {
+    syncPath();
     if (!ensureHost()) return;
     alignToComposerText();
     textEl.replaceChildren(...CCSL_RENDER.buildNodes(state, config, Date.now()));
@@ -222,12 +244,19 @@
     if (!data || data.__ccsl !== 1) return;
 
     if (data.type === BRIDGE_TYPE && data.fields && typeof data.fields === 'object') {
+      syncPath();
+      // A session-detail response for some other session (prefetch, sidebar)
+      // must not overwrite the open session's branch.
+      if (data.sessionId && !location.pathname.includes(data.sessionId)) return;
       for (const [key, value] of Object.entries(data.fields)) {
-        if (key in state) state[key] = value;
+        if (BRIDGE_FIELD_KEYS.has(key)) state[key] = value;
       }
       render();
     } else if (data.type === DRIFT_TYPE && Array.isArray(data.items)) {
-      state.restDrift = { packVersion: data.packVersion, items: data.items };
+      const items = data.items
+        .filter((i) => i && typeof i === 'object')
+        .map((i) => ({ endpoint: String(i.endpoint ?? ''), key: i.key == null ? null : String(i.key) }));
+      state.restDrift = { packVersion: data.packVersion, items };
       syncDrift();
       render();
     }
@@ -251,6 +280,7 @@
   // The composer (and its ancestors) can be torn down and rebuilt by the
   // app's SPA router; re-attach whenever that happens.
   new MutationObserver(() => {
+    if (!onCodePage()) return;
     if (!host || !host.isConnected) render();
   }).observe(document.documentElement, { childList: true, subtree: true });
 
