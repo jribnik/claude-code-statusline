@@ -11,7 +11,7 @@ limitations.)
 unversioned surface (the app's own REST traffic) and can break on any
 claude.ai deploy.
 
-## Status: v0.2.0 — options page, selector pack, DOM anchor resilience
+## Status: v0.2.1 — options page, selector pack, DOM anchor resilience
 
 Proves the injection/timing/architecture works and matches the target format
 of a real `~/.claude/statusline.sh`, lets you customize that format via an
@@ -38,7 +38,9 @@ concern — see the anchor-resilience section below).
     session detail call the app already makes on its own. Its
     `response_shape.external_metadata` carries `current_branches` (git
     branch). This replaced an earlier attempt to read branch from
-    `batch-branch-status`, which only ever returned an empty array.
+    `batch-branch-status`, which only ever returned an empty array. Only a
+    response for the session open in the current URL updates the bar, and
+    the branch is cleared on navigation and when the open session has none.
   - `GET /api/organizations/{id}/usage` → `five_hour`/`seven_day`
     `{utilization, resets_at}` → the Pro/Max rate-limit bars
 - **When claude.ai changes a response shape:** patch the relevant `path`
@@ -72,16 +74,26 @@ concern — see the anchor-resilience section below).
   ancestor levels the code walked — patch `ANCHOR_CANDIDATES[0]`
   (`'surface'`) to match the new markup, bump `ANCHOR_PACK_VERSION`, and
   add a changelog line at the top of `content.js`.
+- The bar only runs on `claude.ai/code` pages. The content scripts are
+  injected on all of claude.ai (the app navigates between areas without a
+  reload), but outside `/code` they stay idle — no DOM probing, no anchor
+  warnings.
 - Rendering itself lives in `src/shared/render.js`, driven by a config
   object (schema + defaults in `src/shared/config.js`) stored in
   `chrome.storage.sync`. The options page (`src/options/`) edits that same
   config with a live preview, so the options page and the real bar can never
   drift apart.
 
+## Tests
+
+The pure parts (selector pack, config normalization, render helpers) have
+dependency-free tests: `node --test tests/` (Node 20+).
+
 ## Install (unpacked)
 
-Not published anywhere, including the Chrome Web Store — see Known
-limitations for why.
+The source is public on GitHub, but the extension is not published to the
+Chrome Web Store (or any other extension store) — see Known limitations for
+why.
 
 1. Get the code: `git clone` this repo, or download and unzip a source
    `.zip` of it.
@@ -109,10 +121,11 @@ extension like this one.
   softer case than a classic scraper — `interceptor.js` never sends its own
   requests; it passively reads responses the app's *own* JS already fetched
   during your normal manual session — but the "harvest data" language is
-  broad enough that a personal, unpublished install feels meaningfully
-  lower-risk than a public or unlisted Web Store listing (more exposure,
-  Google's own review, a durable public artifact tied to your account).
-  Reassess if that calculus changes.
+  broad enough that a Web Store listing (a one-click install for anyone,
+  Google's own review, a store page tied to your account) is a step further
+  than this public source repository, which you have to clone and load
+  unpacked yourself. Reassess if that calculus changes; note the repo itself
+  is already a public artifact.
 - Drift detection (both REST and DOM anchor) only covers the shapes/anchors
   the code already knows about — it can't tell you about a field or
   insertion point claude.ai starts returning/using that nothing here has
