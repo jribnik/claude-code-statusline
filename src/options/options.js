@@ -18,7 +18,9 @@
   const FIELD_LABELS = { branch: 'Branch', fiveHour: '5h limit', sevenDay: '7d limit' };
   const COLOR_KEYS = ['text', 'dim', 'ok', 'warn', 'crit'];
 
-  let config = CCSL_CONFIG.DEFAULTS;
+  // Always a private, mutable copy: the form handlers mutate `config` in place,
+  // and before the storage read returns it would otherwise be DEFAULTS itself.
+  let config = CCSL_CONFIG.defaults();
   let saveTimer = null;
   let savedHintTimer = null;
 
@@ -72,6 +74,7 @@
   }
 
   function saveNow() {
+    saveTimer = null;
     chrome.storage.sync.set({ [CCSL_CONFIG.STORAGE_KEY]: currentNormalized() }, showSavedHint);
   }
 
@@ -278,7 +281,7 @@
 
     els.resetBtn.addEventListener('click', () => {
       if (!confirm('Reset all status line settings to defaults?')) return;
-      config = JSON.parse(JSON.stringify(CCSL_CONFIG.DEFAULTS));
+      config = CCSL_CONFIG.defaults();
       chrome.storage.sync.set({ [CCSL_CONFIG.STORAGE_KEY]: config }, () => {
         populateForm();
         showSavedHint();
@@ -306,6 +309,18 @@
   wireStaticControls();
   chrome.storage.sync.get({ [CCSL_CONFIG.STORAGE_KEY]: null }, (result) => {
     config = CCSL_CONFIG.normalize(result[CCSL_CONFIG.STORAGE_KEY]);
+    populateForm();
+  });
+
+  // Another options tab (or chrome.storage sync from another device) changed
+  // the config: reload the form, unless we have our own save pending — that
+  // edit is newer and is about to overwrite it anyway.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync' || !changes[CCSL_CONFIG.STORAGE_KEY]) return;
+    const incoming = CCSL_CONFIG.normalize(changes[CCSL_CONFIG.STORAGE_KEY].newValue);
+    if (saveTimer) return;
+    if (JSON.stringify(incoming) === JSON.stringify(currentNormalized())) return;
+    config = incoming;
     populateForm();
   });
 })();

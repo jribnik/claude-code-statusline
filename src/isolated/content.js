@@ -29,6 +29,22 @@
   const DRIFT_TYPE = '__ccsl_drift';
   const ANCHOR_PACK_VERSION = 1;
 
+  // Keys the main-world bridge may set. Drift state is owned by this file and
+  // must not be writable by a page message (a malformed one could crash render).
+  const BRIDGE_FIELD_KEYS = new Set([
+    'branch', 'fiveHourPct', 'fiveHourResetsAt', 'sevenDayPct', 'sevenDayResetsAt',
+  ]);
+
+  // The bar only belongs on Claude Code pages. The content script is injected on
+  // all of claude.ai (SPA navigation can move between /code and other areas
+  // without a reload), so every entry point checks this first: on regular chat
+  // pages the composer anchor legitimately never exists, and probing for it on
+  // every DOM mutation cost a querySelector per streamed token and raised a
+  // false "anchor missing" warning after 10s.
+  function onCodePage() {
+    return location.pathname === '/code' || location.pathname.startsWith('/code/');
+  }
+
   const state = {
     branch: null,
     fiveHourPct: null,
@@ -41,6 +57,10 @@
   };
 
   let config = CCSL_CONFIG.DEFAULTS;
+
+  // Branch per session id (see src/shared/session.js). Responses are stored under their own
+  // session id whenever they arrive, and render() shows the entry for the session in the URL.
+  const branches = CCSL_SESSION.createBranchStore();
 
   let host, shadow, styleEl, textEl, composerInputEl;
   let tickTimer = null;
@@ -157,13 +177,29 @@
     `;
   }
 
-  function ensureHost() {
-    if (host && host.isConnected) return true;
+  // SPA navigation: reset the anchor-miss streak. The branch needs no clearing here: render()
+  // looks it up by the session id in the URL, so it can neither linger from the previous
+  // session nor be lost when the app fetched the new session before the URL changed.
+  function syncPath() {
+    if (location.pathname === lastPath) return;
+    lastPath = location.pathname;
+    missStreak = 0;
+  }
 
-    if (location.pathname !== lastPath) {
-      lastPath = location.pathname;
-      missStreak = 0;
+  // Leaving /code: take the bar out of the DOM (and stop its timer) instead of leaving a stale
+  // one attached to a composer that may still be mounted briefly.
+  function removeHost() {
+    if (tickTimer) {
+      clearInterval(tickTimer);
+      tickTimer = null;
     }
+    if (host) host.remove();
+    host = shadow = styleEl = textEl = composerInputEl = null;
+  }
+
+  function ensureHost() {
+    if (!onCodePage()) return false;
+    if (host && host.isConnected) return true;
 
     const found = findComposerAnchor();
     if (!found) {
@@ -210,7 +246,13 @@
   }
 
   function render() {
+    syncPath();
+    if (!onCodePage()) {
+      removeHost();
+      return;
+    }
     if (!ensureHost()) return;
+    state.branch = branches.get(CCSL_SESSION.sessionIdFromPath(location.pathname));
     alignToComposerText();
     textEl.replaceChildren(...CCSL_RENDER.buildNodes(state, config, Date.now()));
   }
@@ -222,12 +264,25 @@
     if (!data || data.__ccsl !== 1) return;
 
     if (data.type === BRIDGE_TYPE && data.fields && typeof data.fields === 'object') {
+      syncPath();
       for (const [key, value] of Object.entries(data.fields)) {
-        if (key in state) state[key] = value;
+        if (!BRIDGE_FIELD_KEYS.has(key)) continue;
+        if (key === 'branch') {
+          // Keyed by the response's own session id, never by the current URL: a detail fetch
+          // for another session (prefetch, sidebar) or one that lands just before the app
+          // pushes the new URL is kept for that session instead of being dropped or applied
+          // to the wrong one. Only fall back to the open session if no id came along.
+          branches.set(data.sessionId || CCSL_SESSION.sessionIdFromPath(location.pathname), value);
+        } else {
+          state[key] = value;
+        }
       }
       render();
     } else if (data.type === DRIFT_TYPE && Array.isArray(data.items)) {
-      state.restDrift = { packVersion: data.packVersion, items: data.items };
+      const items = data.items
+        .filter((i) => i && typeof i === 'object')
+        .map((i) => ({ endpoint: String(i.endpoint ?? ''), key: i.key == null ? null : String(i.key) }));
+      state.restDrift = { packVersion: data.packVersion, items };
       syncDrift();
       render();
     }
@@ -251,6 +306,9 @@
   // The composer (and its ancestors) can be torn down and rebuilt by the
   // app's SPA router; re-attach whenever that happens.
   new MutationObserver(() => {
+    // Navigation (including leaving /code) re-renders; otherwise only a lost host does.
+    if (location.pathname !== lastPath) return render();
+    if (!onCodePage()) return;
     if (!host || !host.isConnected) render();
   }).observe(document.documentElement, { childList: true, subtree: true });
 

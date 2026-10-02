@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Status Line for Claude Code Web (unofficial)",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Unofficial, best-effort CLI-style status bar for Claude Code on the web. Not affiliated with or endorsed by Anthropic.",
   "homepage_url": "https://github.com/jribnik/claude-code-statusline",
   "minimum_chrome_version": "111",
@@ -26,7 +26,7 @@
     },
     {
       "matches": ["https://claude.ai/*"],
-      "js": ["src/shared/config.js", "src/shared/render.js", "src/isolated/content.js"],
+      "js": ["src/shared/config.js", "src/shared/render.js", "src/shared/session.js", "src/isolated/content.js"],
       "world": "ISOLATED",
       "run_at": "document_start"
     }

@@ -57,11 +57,12 @@
     if (!url) return;
     const endpoint = PACK.matchEndpoint(url);
     if (!endpoint) return;
+    const sessionId = PACK.sessionIdFor(endpoint, url);
     try {
       response.clone().json()
         .then((json) => {
           const { fields, drift } = PACK.extract(endpoint, json);
-          if (fields) post(BRIDGE_TYPE, { fields });
+          if (fields) post(BRIDGE_TYPE, { fields, sessionId });
           if (drift.length) reportDrift(endpoint, drift);
         })
         .catch(() => {});
@@ -75,7 +76,11 @@
     window.fetch = async function (...args) {
       const response = await originalFetch.apply(this, args);
       try {
-        const url = typeof args[0] === 'string' ? args[0] : args[0]?.url;
+        // fetch() accepts a string, a URL object or a Request.
+        const input = args[0];
+        const url = typeof input === 'string' ? input
+          : input instanceof URL ? input.href
+            : input?.url;
         tapFetchResponse(url, response);
       } catch {
         // swallow — the page must always get its real response back
