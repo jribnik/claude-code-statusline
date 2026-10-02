@@ -92,7 +92,7 @@ concern — see the anchor-resilience section below).
 
 The pure parts (selector pack, config normalization, render helpers, the
 per-session branch store) have
-dependency-free tests: `node --test tests/` (Node 20+).
+dependency-free tests: `node --test tests/*.test.mjs` (Node 20+).
 
 ## Install (unpacked)
 
